@@ -32,7 +32,22 @@ client = openai.OpenAI(
 TOPIC, TONE, WEEKLY_TOPIC, BROADCAST_MSG = range(4)
 
 def get_user(user_id):
-  def check_daily_tasks(user):
+    uid = str(user_id)
+    user = users_col.find_one({"_id": uid})
+
+    if not user:
+        user = {
+            "_id": uid,
+            "points": 300,
+            "uses": 0,
+            "referrals": 0
+        }
+        users_col.insert_one(user)
+
+    return user
+    
+    
+    def check_daily_tasks(user):
     today = datetime.utcnow().strftime("%Y-%m-%d")
 
     if "last_task_date" not in user or user["last_task_date"] != today:
