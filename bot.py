@@ -251,22 +251,26 @@ async def watch_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("📺 شاهد الإعلان", web_app=WebAppInfo(url=AD_URL))],
         ])
     )
-
 async def handle_web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = update.message.web_app_data.data
+
     if data == "ad_watched":
-        user_data = check_daily_tasks(get_user(update.effective_user.id))
-if not user_data["tasks"]["ad"]:
-        user_data["tasks"]["ad"] = True
-    
-update_user(user_id, {
-    "points": new_points,
-    "tasks": user_data["tasks"]
-})   
-update_user(update.effective_user.id, {"points": new_points})
-        await update.message.reply_text(
-            f"✅ *تم تأكيد المشاهدة!*\n\n"
-            f"تم إضافة *{POINTS_PER_AD} نقطة* لحسابك 🎉\n"
+        user_id = update.effective_user.id
+        user_data = check_daily_tasks(get_user(user_id))
+
+        if not user_data["tasks"]["ad"]:
+            user_data["tasks"]["ad"] = True
+
+            new_points = user_data["points"] + POINTS_PER_AD
+
+            update_user(user_id, {
+                "points": new_points,
+                "tasks": user_data["tasks"]
+            })
+
+            await update.message.reply_text(
+                f"✅ تم إضافة {POINTS_PER_AD} نقطة\n💎 رصيدك: {new_points}"
+            )
             f"💎 رصيدك الحالي: *{new_points} نقطة*",
             parse_mode="Markdown",
             reply_markup=InlineKeyboardMarkup([
@@ -278,9 +282,12 @@ async def handle_platform(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
-user_data = check_daily_tasks(get_user(user_id))
-update_user(user_id, {"tasks": user_data["tasks"]})
-if user_data["points"] < POINTS_PER_USE:
+    user_id = query.from_user.id
+    user_data = check_daily_tasks(get_user(user_id))
+
+    update_user(user_id, {"tasks": user_data["tasks"]})
+
+    if user_data["points"] < POINTS_PER_USE:
         await query.message.reply_text(
             f"❌ *نقاطك مش كافية!*\n\n"
             f"💎 رصيدك: *{user_data['points']} نقطة*\n"
@@ -318,9 +325,12 @@ async def weekly(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
-user_data = check_daily_tasks(get_user(user_id))
-update_user(user_id, {"tasks": user_data["tasks"]})
-if user_data["points"] < POINTS_PER_USE:
+    user_id = query.from_user.id
+    user_data = check_daily_tasks(get_user(user_id))
+
+    update_user(user_id, {"tasks": user_data["tasks"]})
+
+    if user_data["points"] < POINTS_PER_USE:
         await query.message.reply_text(
             f"❌ *نقاطك مش كافية!*\n\n"
             f"💎 رصيدك: *{user_data['points']} نقطة*\n\n"
@@ -399,14 +409,19 @@ async def get_tone(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await query.edit_message_text("⏳ بكتبلك المحتوى... انتظر ثانية!")
 
-user_id = query.from_user.id
+    user_id = query.from_user.id
+    user_data = check_daily_tasks(get_user(user_id))
 
-user_data = check_daily_tasks(get_user(user_id))
+    if not user_data["tasks"]["used"]:
+        user_data["tasks"]["used"] = True
 
-# ✅ تسجيل استخدام البوت
-if not user_data["tasks"]["used"]:
-    user_data["tasks"]["used"] = True
+    new_points = user_data["points"] - POINTS_PER_USE
 
+    update_user(user_id, {
+        "points": new_points,
+        "uses": user_data["uses"] + 1,
+        "tasks": user_data["tasks"]
+    })
 # 💰 خصم النقاط
 new_points = user_data["points"] - POINTS_PER_USE
 
