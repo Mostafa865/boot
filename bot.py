@@ -409,19 +409,20 @@ async def get_tone(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await query.edit_message_text("⏳ بكتبلك المحتوى... انتظر ثانية!")
 
-    user_id = query.from_user.id
-    user_data = check_daily_tasks(get_user(user_id))
+   user_id = query.from_user.id
 
-    if not user_data["tasks"]["used"]:
-        user_data["tasks"]["used"] = True
+user_data = check_daily_tasks(get_user(user_id))
 
-    new_points = user_data["points"] - POINTS_PER_USE
+if not user_data["tasks"]["used"]:
+    user_data["tasks"]["used"] = True
 
-    update_user(user_id, {
-        "points": new_points,
-        "uses": user_data["uses"] + 1,
-        "tasks": user_data["tasks"]
-    })
+new_points = user_data["points"] - POINTS_PER_USE
+
+update_user(user_id, {
+    "points": new_points,
+    "uses": user_data["uses"] + 1,
+    "tasks": user_data["tasks"]
+})
 # 💰 خصم النقاط
 new_points = user_data["points"] - POINTS_PER_USE
 
