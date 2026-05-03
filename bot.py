@@ -451,31 +451,34 @@ platform_key = context.user_data['platform_key']
 prompt = prompts.get(platform_key, f"اكتب محتوى عن '{topic}' بأسلوب {tone}.")
 
 try:
-   response = client.chat.completions.create(
-   model="gpt-oss-120b",
-   messages=[
-                {"role": "system", "content": "أنت كاتب محتوى محترف ومتخصص في السوشيال ميديا. اكتب محتوى باللغة العربية فقط."},
-                {"role": "user", "content": prompt}
-            ]
-        )
-   content = response.choices[0].message.content
-await query.message.reply_text(
-            f"✅ *المحتوى جاهز:*\n\n{content}\n\n"
-            "━━━━━━━━━━━━━━━\n"
-            f"💎 رصيد نقاطك المتبقي: *{new_points} نقطة*",
-            parse_mode="Markdown",
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("🔄 محتوى جديد", callback_data="new"),
-                 InlineKeyboardButton("🏠 القائمة الرئيسية", callback_data="home")]
-            ])
-        )
+    response = client.chat.completions.create(
+        model="gpt-oss-120b",
+        messages=[
+            {"role": "system", "content": "أنت كاتب محتوى محترف"},
+            {"role": "user", "content": prompt}
+        ]
+    )
+
+    content = response.choices[0].message.content
+
+    await query.message.reply_text(
+        f"✅ *المحتوى جاهز:*\n\n{content}\n\n"
+        "━━━━━━━━━━━━━━━\n"
+        f"💎 رصيد نقاطك المتبقي: *{new_points} نقطة*",
+        parse_mode="Markdown",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("🔄 محتوى جديد", callback_data="new"),
+             InlineKeyboardButton("🏠 القائمة الرئيسية", callback_data="home")]
+        ])
+    )
+
 except Exception:
-        await query.message.reply_text(
-            "❌ حصل خطأ، حاول تاني بعد شوية.",
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("🔄 حاول تاني", callback_data="home")]
-            ])
-        )
+    await query.message.reply_text(
+        "❌ حصل خطأ، حاول تاني بعد شوية.",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("🔄 حاول تاني", callback_data="home")]
+        ])
+    )
 
 return ConversationHandler.END
 
