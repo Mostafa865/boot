@@ -14,10 +14,11 @@
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            height: 100vh;
+            min-height: 100vh;
             margin: 0;
             text-align: center;
             padding: 20px;
+            box-sizing: border-box;
         }
         .btn {
             background: #6c3df4;
@@ -29,11 +30,9 @@
             cursor: pointer;
             margin-top: 20px;
             width: 100%;
+            max-width: 300px;
         }
-        .btn:disabled {
-            background: #444;
-            cursor: not-allowed;
-        }
+        .btn:disabled { background: #444; cursor: not-allowed; }
         #status { font-size: 18px; margin: 20px; color: #a78bfa; }
     </style>
 </head>
@@ -44,9 +43,10 @@
     <button class="btn" id="watchBtn" onclick="watchAd()">▶️ شاهد الإعلان</button>
 
     <script>
-        const tg = window.Telegram.WebApp;
+        let tg = window.Telegram.WebApp;
         tg.ready();
         tg.expand();
+        tg.enableClosingConfirmation();
 
         function watchAd() {
             document.getElementById('watchBtn').disabled = true;
@@ -58,14 +58,17 @@
                 document.getElementById('watchBtn').disabled = false;
                 document.getElementById('watchBtn').onclick = collectPoints;
             }).catch(() => {
-                document.getElementById('status').textContent = '❌ حصل خطأ، حاول تاني';
+                document.getElementById('status').textContent = '❌ حاول تاني';
                 document.getElementById('watchBtn').disabled = false;
             });
         }
 
         function collectPoints() {
-            tg.sendData('ad_watched');
-            tg.close();
+            try {
+                tg.sendData('ad_watched');
+            } catch(e) {
+                window.Telegram.WebApp.sendData('ad_watched');
+            }
         }
     </script>
 </body>
