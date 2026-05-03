@@ -430,7 +430,7 @@ new_points = user_data["points"] - POINTS_PER_USE
         "points": new_points,
         "uses": user_data["uses"] + 1,
         "tasks": user_data["tasks"]
-    })              })
+    })            
     prompts = {
         "facebook": f"اكتب بوست فيسبوك احترافي عن '{topic}' بأسلوب {tone}. يكون جذاب ومحفز على التفاعل مع إيموجي مناسبة.",
         "instagram": f"اكتب كابشن انستجرام مميز عن '{topic}' بأسلوب {tone}. يشمل هاشتاقات مناسبة وإيموجي.",
