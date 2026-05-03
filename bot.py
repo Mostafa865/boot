@@ -210,7 +210,6 @@ async def confirm_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
         return ConversationHandler.END
 
-app.add_handler(CallbackQueryHandler(confirm_ad, pattern="^confirm_ad$"))
 
     platforms = {
         "facebook": "📘 بوست فيسبوك",
