@@ -460,7 +460,6 @@ try:
     )
 
     content = response.choices[0].message.content
-
     await query.message.reply_text(
         f"✅ *المحتوى جاهز:*\n\n{content}\n\n"
         "━━━━━━━━━━━━━━━\n"
