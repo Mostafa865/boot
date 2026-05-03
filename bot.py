@@ -78,11 +78,7 @@ def admin_menu():
     return InlineKeyboardMarkup(keyboard)
 
 async def check_subscription(user_id, bot):
-    try:
-        member = await bot.get_chat_member(CHANNEL_USERNAME, user_id)
-        return member.status in ["member", "administrator", "creator"]
-    except:
-        return False
+    return True
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
