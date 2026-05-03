@@ -276,7 +276,7 @@ async def handle_web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE
             reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton("🏠 القائمة", callback_data="home")]
             ])
-        )
+        
 
 async def handle_platform(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
