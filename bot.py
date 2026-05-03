@@ -40,18 +40,20 @@ def get_user(user_id):
             "_id": uid,
             "points": 300,
             "uses": 0,
-            "referrals": 0
+            "referrals": 0,
+            "tasks": {
+                "ad": False,
+                "used": False,
+                "bonus": False
+            },
+            "last_task_date": datetime.utcnow().strftime("%Y-%m-%d")
         }
         users_col.insert_one(user)
 
     return user
-    
-
 
 
 def check_daily_tasks(user):
-    from datetime import datetime
-
     today = datetime.utcnow().strftime("%Y-%m-%d")
 
     if "last_task_date" not in user or user["last_task_date"] != today:
@@ -64,36 +66,13 @@ def check_daily_tasks(user):
 
     return user
 
-    except Exception as e:
-        print("Mongo Error:", e)
-        return {"_id": str(user_id), "points": 0, "uses": 0, "referrals": 0}
-    if not user:
-        user = {"_id": uid, "points": 300, "uses": 0, "referrals": 0}
-        users_col.insert_one(user)
-    return user
+
 def update_user(user_id, data):
     try:
         uid = str(user_id)
         users_col.update_one({"_id": uid}, {"$set": data}, upsert=True)
     except Exception as e:
         print("Mongo Update Error:", e)
-
-
-
-from datetime import datetime
-
-def check_daily_tasks(user):
-    today = datetime.utcnow().strftime("%Y-%m-%d")
-
-    if "tasks" not in user or user["tasks"].get("date") != today:
-        user["tasks"] = {
-            "date": today,
-            "ad": False,
-            "used": False,
-            "bonus": False
-        }
-    return user
-    
 
 
 async def safe_answer(query):
