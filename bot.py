@@ -10,7 +10,7 @@ client = openai.OpenAI(
     api_key=OPENROUTER_API_KEY,
 )
 
-TOPIC, TONE = range(2)
+TOPIC, TONE, WEEKLY_TOPIC = range(3)
 
 def main_menu():
     keyboard = [
@@ -22,6 +22,7 @@ def main_menu():
          InlineKeyboardButton("🎯 إعلان تسويقي", callback_data="ad")],
         [InlineKeyboardButton("✍️ مقال قصير", callback_data="article"),
          InlineKeyboardButton("💡 أفكار محتوى", callback_data="ideas")],
+        [InlineKeyboardButton("📅 جدولة أسبوعية", callback_data="weekly")],
     ]
     return InlineKeyboardMarkup(keyboard)
 
@@ -69,6 +70,46 @@ async def handle_platform(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="Markdown"
     )
     return TOPIC
+
+async def weekly(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    await query.edit_message_text(
+        "📅 *جدولة أسبوعية*\n\n"
+        "اكتبلي موضوع قناتك وهطلعلك 7 بوستات جاهزة لأسبوع كامل:",
+        parse_mode="Markdown"
+    )
+    return WEEKLY_TOPIC
+
+async def get_weekly_topic(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    topic = update.message.text
+    await update.message.reply_text("⏳ بكتبلك 7 بوستات... انتظر شوية!")
+
+    try:
+        response = client.chat.completions.create(
+            model="gpt-oss-120b",
+            messages=[
+                {"role": "system", "content": "أنت كاتب محتوى محترف. اكتب باللغة العربية فقط."},
+                {"role": "user", "content": f"اكتبلي 7 بوستات تيليجرام مختلفة عن موضوع '{topic}' — واحد لكل يوم في الأسبوع. كل بوست يكون جذاب ومختلف عن التاني مع إيموجي مناسبة."}
+            ]
+        )
+        content = response.choices[0].message.content
+        await update.message.reply_text(
+            f"✅ *بوستات الأسبوع جاهزة:*\n\n{content}",
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🔄 أسبوع جديد", callback_data="weekly"),
+                 InlineKeyboardButton("🏠 القائمة", callback_data="home")]
+            ])
+        )
+    except Exception:
+        await update.message.reply_text(
+            "❌ حصل خطأ، حاول تاني بعد شوية.",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🔄 حاول تاني", callback_data="home")]
+            ])
+        )
+    return ConversationHandler.END
 
 async def get_topic(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['topic'] = update.message.text
@@ -129,7 +170,7 @@ async def get_tone(update: Update, context: ContextTypes.DEFAULT_TYPE):
                  InlineKeyboardButton("🏠 القائمة الرئيسية", callback_data="home")]
             ])
         )
-    except Exception as e:
+    except Exception:
         await query.message.reply_text(
             "❌ حصل خطأ، حاول تاني بعد شوية.",
             reply_markup=InlineKeyboardMarkup([
@@ -151,10 +192,14 @@ def main():
     app = Application.builder().token(TELEGRAM_TOKEN).build()
 
     conv_handler = ConversationHandler(
-        entry_points=[CallbackQueryHandler(handle_platform, pattern="^(facebook|instagram|twitter|linkedin|email|ad|article|ideas)$")],
+        entry_points=[
+            CallbackQueryHandler(handle_platform, pattern="^(facebook|instagram|twitter|linkedin|email|ad|article|ideas)$"),
+            CallbackQueryHandler(weekly, pattern="^weekly$"),
+        ],
         states={
             TOPIC: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_topic)],
             TONE: [CallbackQueryHandler(get_tone, pattern="^tone_")],
+            WEEKLY_TOPIC: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_weekly_topic)],
         },
         fallbacks=[CommandHandler('start', start)]
     )
