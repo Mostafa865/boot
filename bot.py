@@ -1,19 +1,22 @@
-# v4
+# v5
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes, ConversationHandler
+from pymongo import MongoClient
 import openai
-import json
-import os
 
 TELEGRAM_TOKEN = "8545099923:AAH9ggxKf-BsjiNRpfe0lMouf68Kf0JhWP8"
 OPENROUTER_API_KEY = "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"
+MONGO_URI = "mongodb+srv://orabiabosenna_db_user:mostafahbn0@cluster0.cwl2dvz.mongodb.net/botdb?appName=Cluster0"
 ADMIN_ID = 7825923320
 CHANNEL_USERNAME = "@easy_free_1"
 POINTS_PER_AD = 200
 POINTS_PER_USE = 50
 REFERRAL_POINTS = 500
-DB_FILE = "users.json"
 AD_URL = "https://mostafa865.github.io/boot/ad.html"
+
+mongo = MongoClient(MONGO_URI)
+db = mongo["botdb"]
+users_col = db["users"]
 
 client = openai.OpenAI(
     base_url="https://openrouter.ai/api/v1",
@@ -22,29 +25,17 @@ client = openai.OpenAI(
 
 TOPIC, TONE, WEEKLY_TOPIC, BROADCAST_MSG = range(4)
 
-def load_db():
-    if os.path.exists(DB_FILE):
-        with open(DB_FILE, "r") as f:
-            return json.load(f)
-    return {}
-
-def save_db(db):
-    with open(DB_FILE, "w") as f:
-        json.dump(db, f)
-
 def get_user(user_id):
-    db = load_db()
     uid = str(user_id)
-    if uid not in db:
-        db[uid] = {"points": 300, "uses": 0, "referrals": 0}
-        save_db(db)
-    return db[uid]
+    user = users_col.find_one({"_id": uid})
+    if not user:
+        user = {"_id": uid, "points": 300, "uses": 0, "referrals": 0}
+        users_col.insert_one(user)
+    return user
 
 def update_user(user_id, data):
-    db = load_db()
     uid = str(user_id)
-    db[uid] = data
-    save_db(db)
+    users_col.update_one({"_id": uid}, {"$set": data}, upsert=True)
 
 def main_menu():
     keyboard = [
@@ -92,9 +83,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ref_id = context.args[0].replace("ref_", "")
         if ref_id != str(user_id):
             ref_data = get_user(int(ref_id))
-            ref_data["points"] += REFERRAL_POINTS
-            ref_data["referrals"] += 1
-            update_user(int(ref_id), ref_data)
+            new_points = ref_data["points"] + REFERRAL_POINTS
+            update_user(int(ref_id), {"points": new_points, "referrals": ref_data["referrals"] + 1})
             try:
                 await context.bot.send_message(
                     int(ref_id),
@@ -216,12 +206,12 @@ async def handle_web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE
     data = update.message.web_app_data.data
     if data == "ad_watched":
         user_data = get_user(update.effective_user.id)
-        user_data["points"] += POINTS_PER_AD
-        update_user(update.effective_user.id, user_data)
+        new_points = user_data["points"] + POINTS_PER_AD
+        update_user(update.effective_user.id, {"points": new_points})
         await update.message.reply_text(
             f"✅ *تم تأكيد المشاهدة!*\n\n"
             f"تم إضافة *{POINTS_PER_AD} نقطة* لحسابك 🎉\n"
-            f"💎 رصيدك الحالي: *{user_data['points']} نقطة*",
+            f"💎 رصيدك الحالي: *{new_points} نقطة*",
             parse_mode="Markdown",
             reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton("🏠 القائمة", callback_data="home")]
@@ -296,9 +286,8 @@ async def get_weekly_topic(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("⏳ بكتبلك 7 بوستات... انتظر شوية!")
 
     user_data = get_user(update.effective_user.id)
-    user_data["points"] -= POINTS_PER_USE
-    user_data["uses"] += 1
-    update_user(update.effective_user.id, user_data)
+    new_points = user_data["points"] - POINTS_PER_USE
+    update_user(update.effective_user.id, {"points": new_points, "uses": user_data["uses"] + 1})
 
     try:
         response = client.chat.completions.create(
@@ -311,7 +300,7 @@ async def get_weekly_topic(update: Update, context: ContextTypes.DEFAULT_TYPE):
         content = response.choices[0].message.content
         await update.message.reply_text(
             f"✅ *بوستات الأسبوع جاهزة:*\n\n{content}\n\n"
-            f"💎 رصيد نقاطك المتبقي: *{user_data['points']} نقطة*",
+            f"💎 رصيد نقاطك المتبقي: *{new_points} نقطة*",
             parse_mode="Markdown",
             reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton("🔄 أسبوع جديد", callback_data="weekly"),
@@ -348,15 +337,13 @@ async def get_tone(update: Update, context: ContextTypes.DEFAULT_TYPE):
     }
 
     tone = tones[query.data]
-    platform = context.user_data['platform']
     topic = context.user_data['topic']
 
     await query.edit_message_text("⏳ بكتبلك المحتوى... انتظر ثانية!")
 
     user_data = get_user(query.from_user.id)
-    user_data["points"] -= POINTS_PER_USE
-    user_data["uses"] += 1
-    update_user(query.from_user.id, user_data)
+    new_points = user_data["points"] - POINTS_PER_USE
+    update_user(query.from_user.id, {"points": new_points, "uses": user_data["uses"] + 1})
 
     prompts = {
         "facebook": f"اكتب بوست فيسبوك احترافي عن '{topic}' بأسلوب {tone}. يكون جذاب ومحفز على التفاعل مع إيموجي مناسبة.",
@@ -384,7 +371,7 @@ async def get_tone(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.message.reply_text(
             f"✅ *المحتوى جاهز:*\n\n{content}\n\n"
             "━━━━━━━━━━━━━━━\n"
-            f"💎 رصيد نقاطك المتبقي: *{user_data['points']} نقطة*",
+            f"💎 رصيد نقاطك المتبقي: *{new_points} نقطة*",
             parse_mode="Markdown",
             reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton("🔄 محتوى جديد", callback_data="new"),
@@ -406,9 +393,8 @@ async def admin_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     if query.from_user.id != ADMIN_ID:
         return
-    db = load_db()
-    total_users = len(db)
-    total_uses = sum(u.get("uses", 0) for u in db.values())
+    total_users = users_col.count_documents({})
+    total_uses = sum(u.get("uses", 0) for u in users_col.find())
     await query.message.reply_text(
         f"📊 *الإحصائيات*\n\n"
         f"👥 إجمالي المستخدمين: *{total_users}*\n"
@@ -424,8 +410,7 @@ async def admin_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     if query.from_user.id != ADMIN_ID:
         return
-    db = load_db()
-    total_users = len(db)
+    total_users = users_col.count_documents({})
     await query.message.reply_text(
         f"👥 *المستخدمون*\n\n"
         f"إجمالي: *{total_users} مستخدم*",
@@ -447,11 +432,10 @@ async def admin_broadcast_send(update: Update, context: ContextTypes.DEFAULT_TYP
     if update.effective_user.id != ADMIN_ID:
         return ConversationHandler.END
     msg = update.message.text
-    db = load_db()
     success = 0
-    for uid in db:
+    for user in users_col.find():
         try:
-            await context.bot.send_message(int(uid), f"📢 *رسالة من الإدارة:*\n\n{msg}", parse_mode="Markdown")
+            await context.bot.send_message(int(user["_id"]), f"📢 *رسالة من الإدارة:*\n\n{msg}", parse_mode="Markdown")
             success += 1
         except:
             pass
