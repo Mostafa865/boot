@@ -3,7 +3,7 @@ from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQu
 import openai
 
 TELEGRAM_TOKEN = "8545099923:AAFA5UI18858JHifhVv4HvuNsyyU5v8jiRQ"
-OPENROUTER_API_KEY = "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"
+OPENROUTER_API_KEY = "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"
 
 client = openai.OpenAI(
     base_url="https://openrouter.ai/api/v1",
@@ -112,7 +112,7 @@ async def get_tone(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
         response = client.chat.completions.create(
-            model="openai/gpt-oss-120b",
+            model="gpt-oss-120b",
             messages=[
                 {"role": "system", "content": "أنت كاتب محتوى محترف ومتخصص في السوشيال ميديا. اكتب محتوى باللغة العربية فقط."},
                 {"role": "user", "content": prompt}
