@@ -205,9 +205,11 @@ async def check_sub_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
 async def my_account(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-user_data = check_daily_tasks(get_user(query.from_user.id))
-update_user(query.from_user.id, {"tasks": user_data["tasks"]})
-await query.message.reply_text(
+
+    user_data = check_daily_tasks(get_user(query.from_user.id))
+    update_user(query.from_user.id, {"tasks": user_data["tasks"]})
+
+    await query.message.reply_text(
         f"👤 *حسابي*\n\n"
         f"💎 النقاط: *{user_data['points']} نقطة*\n"
         f"✍️ الاستخدامات: *{user_data['uses']} مرة*\n"
