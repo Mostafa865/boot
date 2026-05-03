@@ -253,9 +253,9 @@ async def watch_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = update.message.web_app_data.data
     if data == "ad_watched":
-user_data = check_daily_tasks(get_user(update.effective_user.id))
+        user_data = check_daily_tasks(get_user(update.effective_user.id))
 if not user_data["tasks"]["ad"]:
-    user_data["tasks"]["ad"] = True
+        user_data["tasks"]["ad"] = True
     
 update_user(user_id, {
     "points": new_points,
