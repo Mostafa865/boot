@@ -1,5 +1,5 @@
-# v3
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+# v4
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes, ConversationHandler
 import openai
 import json
@@ -13,6 +13,7 @@ POINTS_PER_AD = 200
 POINTS_PER_USE = 50
 REFERRAL_POINTS = 500
 DB_FILE = "users.json"
+AD_URL = "https://mostafa865.github.io/boot/ad.html"
 
 client = openai.OpenAI(
     base_url="https://openrouter.ai/api/v1",
@@ -203,30 +204,29 @@ async def watch_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     await query.message.reply_text(
         "📺 *شاهد الإعلان عشان تكسب نقاط!*\n\n"
-        "اضغط على الرابط وشوف الإعلان:\n"
-        "بعد المشاهدة اضغط ✅ تأكيد المشاهدة",
+        "اضغط الزر وشوف الإعلان كامل\n"
+        "النقاط هتتضاف تلقائي بعد المشاهدة ✅",
         parse_mode="Markdown",
         reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("📺 شاهد الإعلان", url="https://omg10.com/4/10955644")],
-            [InlineKeyboardButton("✅ تأكيد المشاهدة", callback_data="confirm_ad")],
+            [InlineKeyboardButton("📺 شاهد الإعلان", web_app=WebAppInfo(url=AD_URL))],
         ])
     )
 
-async def confirm_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    user_data = get_user(query.from_user.id)
-    user_data["points"] += POINTS_PER_AD
-    update_user(query.from_user.id, user_data)
-    await query.message.reply_text(
-        f"✅ *تم تأكيد المشاهدة!*\n\n"
-        f"تم إضافة *{POINTS_PER_AD} نقطة* لحسابك 🎉\n"
-        f"💎 رصيدك الحالي: *{user_data['points']} نقطة*",
-        parse_mode="Markdown",
-        reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("🏠 القائمة", callback_data="home")]
-        ])
-    )
+async def handle_web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    data = update.message.web_app_data.data
+    if data == "ad_watched":
+        user_data = get_user(update.effective_user.id)
+        user_data["points"] += POINTS_PER_AD
+        update_user(update.effective_user.id, user_data)
+        await update.message.reply_text(
+            f"✅ *تم تأكيد المشاهدة!*\n\n"
+            f"تم إضافة *{POINTS_PER_AD} نقطة* لحسابك 🎉\n"
+            f"💎 رصيدك الحالي: *{user_data['points']} نقطة*",
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🏠 القائمة", callback_data="home")]
+            ])
+        )
 
 async def handle_platform(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -489,11 +489,11 @@ def main():
 
     app.add_handler(CommandHandler('start', start))
     app.add_handler(conv_handler)
+    app.add_handler(MessageHandler(filters.StatusUpdate.WEB_APP_DATA, handle_web_app_data))
     app.add_handler(CallbackQueryHandler(check_sub_callback, pattern="^check_sub$"))
     app.add_handler(CallbackQueryHandler(my_account, pattern="^myaccount$"))
     app.add_handler(CallbackQueryHandler(referral, pattern="^referral$"))
     app.add_handler(CallbackQueryHandler(watch_ad, pattern="^watch_ad$"))
-    app.add_handler(CallbackQueryHandler(confirm_ad, pattern="^confirm_ad$"))
     app.add_handler(CallbackQueryHandler(admin_stats, pattern="^admin_stats$"))
     app.add_handler(CallbackQueryHandler(admin_users, pattern="^admin_users$"))
     app.add_handler(CallbackQueryHandler(handle_nav, pattern="^(home|new|admin_back)$"))
