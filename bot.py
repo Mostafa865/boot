@@ -37,8 +37,20 @@ def get_user(user_id):
         if not user:
            from datetime import datetime
 
-today = datetime.utcnow().strftime("%Y-%m-%d")
+from datetime import datetime  # لو مش موجودة فوق
 
+def check_daily_tasks(user):
+    today = datetime.utcnow().strftime("%Y-%m-%d")
+
+    if "last_task_date" not in user or user["last_task_date"] != today:
+        user["tasks"] = {
+            "ad": False,
+            "used": False,
+            "bonus": False
+        }
+        user["last_task_date"] = today
+
+    return user
 user = {
     "_id": uid,
     "points": 300,
