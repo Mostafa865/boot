@@ -1,4 +1,4 @@
-# v5
+# v6
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes, ConversationHandler
 from pymongo import MongoClient
@@ -15,12 +15,7 @@ POINTS_PER_USE = 50
 REFERRAL_POINTS = 500
 AD_URL = "https://mostafa865.github.io/boot/ad.html"
 
-mongo = MongoClient(
-    MONGO_URI,
-    tls=True,
-    tlsAllowInvalidCertificates=True,
-    serverSelectionTimeoutMS=5000
-)
+mongo = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000)
 db = mongo["botdb"]
 users_col = db["users"]
 
@@ -34,38 +29,24 @@ TOPIC, TONE, WEEKLY_TOPIC, BROADCAST_MSG = range(4)
 def get_user(user_id):
     uid = str(user_id)
     user = users_col.find_one({"_id": uid})
-
     if not user:
         user = {
             "_id": uid,
             "points": 300,
             "uses": 0,
             "referrals": 0,
-            "tasks": {
-                "ad": False,
-                "used": False,
-                "bonus": False
-            },
+            "tasks": {"ad": False, "used": False, "bonus": False},
             "last_task_date": datetime.utcnow().strftime("%Y-%m-%d")
         }
         users_col.insert_one(user)
-
     return user
-
 
 def check_daily_tasks(user):
     today = datetime.utcnow().strftime("%Y-%m-%d")
-
     if "last_task_date" not in user or user["last_task_date"] != today:
-        user["tasks"] = {
-            "ad": False,
-            "used": False,
-            "bonus": False
-        }
+        user["tasks"] = {"ad": False, "used": False, "bonus": False}
         user["last_task_date"] = today
-
     return user
-
 
 def update_user(user_id, data):
     try:
@@ -73,14 +54,6 @@ def update_user(user_id, data):
         users_col.update_one({"_id": uid}, {"$set": data}, upsert=True)
     except Exception as e:
         print("Mongo Update Error:", e)
-
-
-async def safe_answer(query):
-    try:
-        await safe_answer(query)
-    except:
-        pass
-        
 
 def main_menu():
     keyboard = [
@@ -94,10 +67,9 @@ def main_menu():
          InlineKeyboardButton("💡 أفكار محتوى", callback_data="ideas")],
         [InlineKeyboardButton("📅 جدولة محتوى أسبوعي 🗓", callback_data="weekly")],
         [InlineKeyboardButton("👤 حسابي", callback_data="myaccount"),
-        InlineKeyboardButton("🎁 دعوة صديق", callback_data="referral")],
+         InlineKeyboardButton("🎁 دعوة صديق", callback_data="referral")],
         [InlineKeyboardButton("📺 شاهد إعلان للنقاط", callback_data="watch_ad")],
         [InlineKeyboardButton("📋 مهام اليوم", callback_data="daily_tasks")],
-
     ]
     return InlineKeyboardMarkup(keyboard)
 
@@ -205,10 +177,8 @@ async def check_sub_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
 async def my_account(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-
     user_data = check_daily_tasks(get_user(query.from_user.id))
-    update_user(query.from_user.id, {"tasks": user_data["tasks"]})
-
+    update_user(query.from_user.id, {"tasks": user_data["tasks"], "last_task_date": user_data["last_task_date"]})
     await query.message.reply_text(
         f"👤 *حسابي*\n\n"
         f"💎 النقاط: *{user_data['points']} نقطة*\n"
@@ -251,41 +221,34 @@ async def watch_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("📺 شاهد الإعلان", web_app=WebAppInfo(url=AD_URL))],
         ])
     )
+
 async def handle_web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = update.message.web_app_data.data
-
     if data == "ad_watched":
         user_id = update.effective_user.id
         user_data = check_daily_tasks(get_user(user_id))
-
-        if not user_data["tasks"]["ad"]:
-            user_data["tasks"]["ad"] = True
-
-            new_points = user_data["points"] + POINTS_PER_AD
-
-            update_user(user_id, {
-                "points": new_points,
-                "tasks": user_data["tasks"]
-            })
-
-            await update.message.reply_text(
-                f"✅ تم إضافة {POINTS_PER_AD} نقطة\n💎 رصيدك: {new_points}"
-            )
+        user_data["tasks"]["ad"] = True
+        new_points = user_data["points"] + POINTS_PER_AD
+        update_user(user_id, {
+            "points": new_points,
+            "tasks": user_data["tasks"],
+            "last_task_date": user_data["last_task_date"]
+        })
+        await update.message.reply_text(
+            f"✅ *تم إضافة {POINTS_PER_AD} نقطة!*\n\n"
             f"💎 رصيدك الحالي: *{new_points} نقطة*",
             parse_mode="Markdown",
             reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton("🏠 القائمة", callback_data="home")]
             ])
-        
+        )
 
 async def handle_platform(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-
     user_id = query.from_user.id
     user_data = check_daily_tasks(get_user(user_id))
-
-    update_user(user_id, {"tasks": user_data["tasks"]})
+    update_user(user_id, {"tasks": user_data["tasks"], "last_task_date": user_data["last_task_date"]})
 
     if user_data["points"] < POINTS_PER_USE:
         await query.message.reply_text(
@@ -324,11 +287,9 @@ async def handle_platform(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def weekly(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-
     user_id = query.from_user.id
     user_data = check_daily_tasks(get_user(user_id))
-
-    update_user(user_id, {"tasks": user_data["tasks"]})
+    update_user(user_id, {"tasks": user_data["tasks"], "last_task_date": user_data["last_task_date"]})
 
     if user_data["points"] < POINTS_PER_USE:
         await query.message.reply_text(
@@ -352,11 +313,9 @@ async def weekly(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def get_weekly_topic(update: Update, context: ContextTypes.DEFAULT_TYPE):
     topic = update.message.text
     await update.message.reply_text("⏳ بكتبلك 7 بوستات... انتظر شوية!")
-
     user_data = get_user(update.effective_user.id)
     new_points = user_data["points"] - POINTS_PER_USE
     update_user(update.effective_user.id, {"points": new_points, "uses": user_data["uses"] + 1})
-
     try:
         response = client.chat.completions.create(
             model="gpt-oss-120b",
@@ -406,80 +365,116 @@ async def get_tone(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     tone = tones[query.data]
     topic = context.user_data['topic']
+    platform_key = context.user_data['platform_key']
 
     await query.edit_message_text("⏳ بكتبلك المحتوى... انتظر ثانية!")
 
-user_id = query.from_user.id
-
-user_data = check_daily_tasks(get_user(user_id))
-
-if not user_data["tasks"]["used"]:
+    user_id = query.from_user.id
+    user_data = check_daily_tasks(get_user(user_id))
     user_data["tasks"]["used"] = True
+    new_points = user_data["points"] - POINTS_PER_USE
+    update_user(user_id, {
+        "points": new_points,
+        "uses": user_data["uses"] + 1,
+        "tasks": user_data["tasks"],
+        "last_task_date": user_data["last_task_date"]
+    })
 
-new_points = user_data["points"] - POINTS_PER_USE
-
-update_user(user_id, {
-    "points": new_points,
-    "uses": user_data["uses"] + 1,
-    "tasks": user_data["tasks"]
-})
-# 💰 خصم النقاط
-new_points = user_data["points"] - POINTS_PER_USE
-
-# 💾 حفظ كل حاجة
-
-
-update_user(user_id, {
-    "points": new_points,
-    "uses": user_data["uses"] + 1,
-    "tasks": user_data["tasks"]
-           })     
-
-
-prompts = {
-    "facebook": f"اكتب بوست فيسبوك احترافي عن '{topic}' بأسلوب {tone}. يكون جذاب ومحفز على التفاعل مع إيموجي مناسبة.",
-    "instagram": f"اكتب كابشن انستجرام مميز عن '{topic}' بأسلوب {tone}. يشمل هاشتاقات مناسبة وإيموجي.",
-    "twitter": f"اكتب تويت مختصر وجذاب عن '{topic}' بأسلوب {tone}. في حدود 280 حرف.",
-    "linkedin": f"اكتب بوست لينكدإن احترافي عن '{topic}' بأسلوب {tone}. يكون مفيد ويبرز الخبرة.",
-    "email": f"اكتب إيميل احترافي عن '{topic}' بأسلوب {tone}. يشمل subject line وجسم الإيميل.",
-    "ad": f"اكتب إعلان تسويقي مقنع عن '{topic}' بأسلوب {tone}. يشمل headline وbody وcall to action.",
-    "article": f"اكتب مقال قصير ومفيد عن '{topic}' بأسلوب {tone}. يشمل مقدمة ونقاط رئيسية وخاتمة.",
-    "ideas": f"قدملي 5 أفكار محتوى مميزة ومختلفة عن موضوع '{topic}' مناسبة لسوشيال ميديا.",
+    prompts = {
+        "facebook": f"اكتب بوست فيسبوك احترافي عن '{topic}' بأسلوب {tone}. يكون جذاب ومحفز على التفاعل مع إيموجي مناسبة.",
+        "instagram": f"اكتب كابشن انستجرام مميز عن '{topic}' بأسلوب {tone}. يشمل هاشتاقات مناسبة وإيموجي.",
+        "twitter": f"اكتب تويت مختصر وجذاب عن '{topic}' بأسلوب {tone}. في حدود 280 حرف.",
+        "linkedin": f"اكتب بوست لينكدإن احترافي عن '{topic}' بأسلوب {tone}. يكون مفيد ويبرز الخبرة.",
+        "email": f"اكتب إيميل احترافي عن '{topic}' بأسلوب {tone}. يشمل subject line وجسم الإيميل.",
+        "ad": f"اكتب إعلان تسويقي مقنع عن '{topic}' بأسلوب {tone}. يشمل headline وbody وcall to action.",
+        "article": f"اكتب مقال قصير ومفيد عن '{topic}' بأسلوب {tone}. يشمل مقدمة ونقاط رئيسية وخاتمة.",
+        "ideas": f"قدملي 5 أفكار محتوى مميزة ومختلفة عن موضوع '{topic}' مناسبة لسوشيال ميديا.",
     }
 
-platform_key = context.user_data['platform_key']
-prompt = prompts.get(platform_key, f"اكتب محتوى عن '{topic}' بأسلوب {tone}.")
+    prompt = prompts.get(platform_key, f"اكتب محتوى عن '{topic}' بأسلوب {tone}.")
 
-try:
-    response = client.chat.completions.create(
-        model="gpt-oss-120b",
-        messages=[
-            {"role": "system", "content": "أنت كاتب محتوى محترف"},
-            {"role": "user", "content": prompt}
-        ]
+    try:
+        response = client.chat.completions.create(
+            model="gpt-oss-120b",
+            messages=[
+                {"role": "system", "content": "أنت كاتب محتوى محترف ومتخصص في السوشيال ميديا. اكتب محتوى باللغة العربية فقط."},
+                {"role": "user", "content": prompt}
+            ]
+        )
+        content = response.choices[0].message.content
+        await query.message.reply_text(
+            f"✅ *المحتوى جاهز:*\n\n{content}\n\n"
+            "━━━━━━━━━━━━━━━\n"
+            f"💎 رصيد نقاطك المتبقي: *{new_points} نقطة*",
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🔄 محتوى جديد", callback_data="new"),
+                 InlineKeyboardButton("🏠 القائمة الرئيسية", callback_data="home")]
+            ])
+        )
+    except Exception:
+        await query.message.reply_text(
+            "❌ حصل خطأ، حاول تاني بعد شوية.",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🔄 حاول تاني", callback_data="home")]
+            ])
+        )
+
+    return ConversationHandler.END
+
+async def daily_tasks(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    user_id = query.from_user.id
+    user_data = check_daily_tasks(get_user(user_id))
+    tasks = user_data["tasks"]
+
+    ad_status = "✅" if tasks["ad"] else "❌"
+    used_status = "✅" if tasks["used"] else "❌"
+
+    text = (
+        "📋 *مهام اليوم*\n\n"
+        f"{ad_status} شاهد إعلان (+200 نقطة)\n"
+        f"{used_status} استخدم البوت مرة\n\n"
     )
 
-    content = response.choices[0].message.content
-await query.message.reply_text(
-        f"✅ *المحتوى جاهز:*\n\n{content}\n\n"
-        "━━━━━━━━━━━━━━━\n"
-        f"💎 رصيد نقاطك المتبقي: *{new_points} نقطة*",
+    if tasks["ad"] and tasks["used"] and not tasks["bonus"]:
+        text += "🎁 يمكنك استلام 300 نقطة بونص!"
+        keyboard = [[InlineKeyboardButton("🎁 استلام البونص", callback_data="claim_bonus")]]
+    elif tasks["bonus"]:
+        text += "✅ استلمت البونص النهارده!"
+        keyboard = [[InlineKeyboardButton("🏠 القائمة", callback_data="home")]]
+    else:
+        text += "🎯 أكمل المهام وخد 300 نقطة بونص!"
+        keyboard = [[InlineKeyboardButton("🏠 القائمة", callback_data="home")]]
+
+    await query.message.reply_text(
+        text,
         parse_mode="Markdown",
-        reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("🔄 محتوى جديد", callback_data="new"),
-             InlineKeyboardButton("🏠 القائمة الرئيسية", callback_data="home")]
-        ])
+        reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
-except Exception:
-await query.message.reply_text(
-        "❌ حصل خطأ، حاول تاني بعد شوية.",
-        reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("🔄 حاول تاني", callback_data="home")]
-        ])
-    )
+async def claim_bonus(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    user_id = query.from_user.id
+    user_data = check_daily_tasks(get_user(user_id))
+    tasks = user_data["tasks"]
 
-return ConversationHandler.END
+    if tasks["ad"] and tasks["used"] and not tasks["bonus"]:
+        new_points = user_data["points"] + 300
+        tasks["bonus"] = True
+        update_user(user_id, {"points": new_points, "tasks": tasks})
+        await query.message.reply_text(
+            f"🎉 *مبروك! تم إضافة 300 نقطة بونص!*\n\n"
+            f"💎 رصيدك الحالي: *{new_points} نقطة*",
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🏠 القائمة", callback_data="home")]
+            ])
+        )
+    else:
+        await query.message.reply_text("❌ لازم تكمل المهام الأول أو استلمت البونص قبل كده!")
 
 async def admin_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -546,68 +541,6 @@ async def handle_nav(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=main_menu()
         )
 
-async def daily_tasks(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-
-    user_id = query.from_user.id
-    user_data = check_daily_tasks(get_user(user_id))
-    tasks = user_data["tasks"]
-
-    # حالة المهام
-    ad_status = "✅" if tasks["ad"] else "❌"
-    used_status = "✅" if tasks["used"] else "❌"
-
-    text = (
-        "📋 *مهام اليوم*\n\n"
-        f"{ad_status} شاهد إعلان (+200)\n"
-        f"{used_status} استخدم البوت\n\n"
-    )
-
-    # لو خلص الاتنين ولسه ماخدش البونص
-    if tasks["ad"] and tasks["used"] and not tasks["bonus"]:
-        text += "\n🎁 تقدر تستلم 300 نقطة بونص!"
-        keyboard = [
-            [InlineKeyboardButton("🎁 استلام البونص", callback_data="claim_bonus")]
-        ]
-    else:
-        text += "\n🎯 أكمل المهام وخد البونص"
-        keyboard = [
-            [InlineKeyboardButton("🏠 القائمة", callback_data="home")]
-        ]
-
-    await query.message.reply_text(
-        text,
-        parse_mode="Markdown",
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
-
-async def claim_bonus(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-
-    user_id = query.from_user.id
-    user_data = check_daily_tasks(get_user(user_id))
-    tasks = user_data["tasks"]
-
-    # ✅ تحقق إنه خلص المهام
-    if tasks["ad"] and tasks["used"] and not tasks["bonus"]:
-        new_points = user_data["points"] + 300
-        tasks["bonus"] = True
-
-        update_user(user_id, {
-            "points": new_points,
-            "tasks": tasks
-        })
-
-        await query.message.reply_text(
-            f"🎉 تم إضافة 300 نقطة!\n💎 رصيدك: {new_points}"
-        )
-    else:
-        await query.message.reply_text("❌ لازم تكمل المهام الأول")
-
-
-
 def main():
     app = Application.builder().token(TELEGRAM_TOKEN).build()
 
@@ -633,12 +566,12 @@ def main():
     app.add_handler(CallbackQueryHandler(my_account, pattern="^myaccount$"))
     app.add_handler(CallbackQueryHandler(referral, pattern="^referral$"))
     app.add_handler(CallbackQueryHandler(watch_ad, pattern="^watch_ad$"))
+    app.add_handler(CallbackQueryHandler(daily_tasks, pattern="^daily_tasks$"))
+    app.add_handler(CallbackQueryHandler(claim_bonus, pattern="^claim_bonus$"))
     app.add_handler(CallbackQueryHandler(admin_stats, pattern="^admin_stats$"))
     app.add_handler(CallbackQueryHandler(admin_users, pattern="^admin_users$"))
     app.add_handler(CallbackQueryHandler(handle_nav, pattern="^(home|new|admin_back)$"))
-    app.add_handler(CallbackQueryHandler(daily_tasks, pattern="^daily_tasks$"))
-    app.add_handler(CallbackQueryHandler(claim_bonus, pattern="^claim_bonus$"))
-    
+
     app.run_polling()
 
 if __name__ == '__main__':
