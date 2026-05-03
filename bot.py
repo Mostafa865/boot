@@ -459,7 +459,7 @@ try:
             ]
         )
    content = response.choices[0].message.content
-   await query.message.reply_text(
+await query.message.reply_text(
             f"✅ *المحتوى جاهز:*\n\n{content}\n\n"
             "━━━━━━━━━━━━━━━\n"
             f"💎 رصيد نقاطك المتبقي: *{new_points} نقطة*",
