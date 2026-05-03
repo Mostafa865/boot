@@ -469,7 +469,7 @@ try:
                  InlineKeyboardButton("🏠 القائمة الرئيسية", callback_data="home")]
             ])
         )
-    except Exception:
+except Exception:
         await query.message.reply_text(
             "❌ حصل خطأ، حاول تاني بعد شوية.",
             reply_markup=InlineKeyboardMarkup([
