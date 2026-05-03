@@ -183,38 +183,34 @@ async def watch_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     await query.message.reply_text(
-        "📺 *مشاهدة إعلان*\n\n"
-        "━━━━━━━━━━━━━━━\n"
-        "🎯 إعلان: جرب أفضل بوت AI عربي!\n"
-        "━━━━━━━━━━━━━━━\n\n"
-        "✅ شكراً على المشاهدة!\n"
-        f"تم إضافة *{POINTS_PER_AD} نقطة* لحسابك 🎉",
+        "📺 *شاهد الإعلان عشان تكسب نقاط!*\n\n"
+        "اضغط على الرابط وشوف الإعلان:\n"
+        "بعد المشاهدة اضغط ✅ تأكيد المشاهدة",
+        parse_mode="Markdown",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("📺 شاهد الإعلان", url="https://omg10.com/4/10955644")],
+            [InlineKeyboardButton("✅ تأكيد المشاهدة", callback_data="confirm_ad")],
+        ])
+    )
+
+async def confirm_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    user_data = get_user(query.from_user.id)
+    user_data["points"] += POINTS_PER_AD
+    update_user(query.from_user.id, user_data)
+    await query.message.reply_text(
+        f"✅ *تم تأكيد المشاهدة!*\n\n"
+        f"تم إضافة *{POINTS_PER_AD} نقطة* لحسابك 🎉\n"
+        f"💎 رصيدك الحالي: *{user_data['points']} نقطة*",
         parse_mode="Markdown",
         reply_markup=InlineKeyboardMarkup([
             [InlineKeyboardButton("🏠 القائمة", callback_data="home")]
         ])
     )
-    user_data = get_user(query.from_user.id)
-    user_data["points"] += POINTS_PER_AD
-    update_user(query.from_user.id, user_data)
-
-async def handle_platform(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-
-    user_data = get_user(query.from_user.id)
-    if user_data["points"] < POINTS_PER_USE:
-        await query.message.reply_text(
-            f"❌ *نقاطك مش كافية!*\n\n"
-            f"💎 رصيدك: *{user_data['points']} نقطة*\n"
-            f"محتاج: *{POINTS_PER_USE} نقطة*\n\n"
-            "📺 شاهد إعلان واكسب نقاط عشان تكمل!",
-            parse_mode="Markdown",
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("📺 شاهد إعلان", callback_data="watch_ad")]
-            ])
-        )
         return ConversationHandler.END
+
+app.add_handler(CallbackQueryHandler(confirm_ad, pattern="^confirm_ad$"))
 
     platforms = {
         "facebook": "📘 بوست فيسبوك",
