@@ -1,9 +1,10 @@
-# v6
+# v7
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes, ConversationHandler
 from pymongo import MongoClient
 from datetime import datetime
 import openai
+import random
 
 TELEGRAM_TOKEN = "8545099923:AAH9ggxKf-BsjiNRpfe0lMouf68Kf0JhWP8"
 OPENROUTER_API_KEY = "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"
@@ -14,6 +15,14 @@ POINTS_PER_AD = 200
 POINTS_PER_USE = 50
 REFERRAL_POINTS = 500
 AD_URL = "https://mostafa865.github.io/boot/ad.html"
+
+MYSTERY_BOX_PRIZES = [
+    (50, "😐 حظك عادي", 50),
+    (100, "🙂 مش بطال", 25),
+    (200, "😊 كويس", 15),
+    (500, "🔥 حظك حلو", 8),
+    (1000, "🎉 جاكبوت", 2),
+]
 
 mongo = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000)
 db = mongo["botdb"]
@@ -36,7 +45,8 @@ def get_user(user_id):
             "uses": 0,
             "referrals": 0,
             "tasks": {"ad": False, "used": False, "bonus": False},
-            "last_task_date": datetime.utcnow().strftime("%Y-%m-%d")
+            "last_task_date": datetime.utcnow().strftime("%Y-%m-%d"),
+            "last_box_date": ""
         }
         users_col.insert_one(user)
     return user
@@ -55,6 +65,15 @@ def update_user(user_id, data):
     except Exception as e:
         print("Mongo Update Error:", e)
 
+def spin_mystery_box():
+    total = sum(w for _, _, w in MYSTERY_BOX_PRIZES)
+    r = random.randint(1, total)
+    current = 0
+    for points, msg, weight in MYSTERY_BOX_PRIZES:
+        current += weight
+        if r <= current:
+            return points, msg
+
 def main_menu():
     keyboard = [
         [InlineKeyboardButton("📘 بوست فيسبوك", callback_data="facebook"),
@@ -68,7 +87,8 @@ def main_menu():
         [InlineKeyboardButton("📅 جدولة محتوى أسبوعي 🗓", callback_data="weekly")],
         [InlineKeyboardButton("👤 حسابي", callback_data="myaccount"),
          InlineKeyboardButton("🎁 دعوة صديق", callback_data="referral")],
-        [InlineKeyboardButton("📺 شاهد إعلان للنقاط", callback_data="watch_ad")],
+        [InlineKeyboardButton("📺 شاهد إعلان للنقاط", callback_data="watch_ad"),
+         InlineKeyboardButton("🎲 صندوق الحظ", callback_data="mystery_box")],
         [InlineKeyboardButton("📋 مهام اليوم", callback_data="daily_tasks")],
     ]
     return InlineKeyboardMarkup(keyboard)
@@ -174,6 +194,43 @@ async def check_sub_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
     else:
         await query.answer("❌ لسه مشتركتش في القناة!", show_alert=True)
 
+async def mystery_box(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    user_id = query.from_user.id
+    user_data = get_user(user_id)
+    today = datetime.utcnow().strftime("%Y-%m-%d")
+
+    if user_data.get("last_box_date") == today:
+        await query.message.reply_text(
+            "🎲 *صندوق الحظ*\n\n"
+            "❌ فتحت الصندوق النهارده بالفعل!\n"
+            "ارجع بكره عشان تفتحه تاني 😊",
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🏠 القائمة", callback_data="home")]
+            ])
+        )
+        return
+
+    await query.message.reply_text("🎲 *بنفتح الصندوق...*\n\n🎰 جاري السحب...", parse_mode="Markdown")
+
+    prize_points, prize_msg = spin_mystery_box()
+    new_points = user_data["points"] + prize_points
+    update_user(user_id, {"points": new_points, "last_box_date": today})
+
+    await query.message.reply_text(
+        f"🎁 *نتيجة صندوق الحظ*\n\n"
+        f"{prize_msg}\n\n"
+        f"🎊 ربحت *{prize_points} نقطة*!\n"
+        f"💎 رصيدك الحالي: *{new_points} نقطة*\n\n"
+        f"ارجع بكره عشان تفتح الصندوق تاني! 🔄",
+        parse_mode="Markdown",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("🏠 القائمة", callback_data="home")]
+        ])
+    )
+
 async def my_account(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -186,7 +243,8 @@ async def my_account(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🎁 الدعوات: *{user_data['referrals']} صديق*\n\n"
         f"كل استخدام بيتخصم {POINTS_PER_USE} نقطة\n"
         f"شاهد إعلان واكسب {POINTS_PER_AD} نقطة 📺\n"
-        f"دعوة صديق واكسب {REFERRAL_POINTS} نقطة 🎁",
+        f"دعوة صديق واكسب {REFERRAL_POINTS} نقطة 🎁\n"
+        f"صندوق الحظ يومياً 🎲",
         parse_mode="Markdown",
         reply_markup=InlineKeyboardMarkup([
             [InlineKeyboardButton("🏠 القائمة", callback_data="home")]
@@ -258,7 +316,8 @@ async def handle_platform(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "📺 شاهد إعلان واكسب نقاط عشان تكمل!",
             parse_mode="Markdown",
             reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("📺 شاهد إعلان", callback_data="watch_ad")]
+                [InlineKeyboardButton("📺 شاهد إعلان", callback_data="watch_ad"),
+                 InlineKeyboardButton("🎲 صندوق الحظ", callback_data="mystery_box")]
             ])
         )
         return ConversationHandler.END
@@ -566,6 +625,7 @@ def main():
     app.add_handler(CallbackQueryHandler(my_account, pattern="^myaccount$"))
     app.add_handler(CallbackQueryHandler(referral, pattern="^referral$"))
     app.add_handler(CallbackQueryHandler(watch_ad, pattern="^watch_ad$"))
+    app.add_handler(CallbackQueryHandler(mystery_box, pattern="^mystery_box$"))
     app.add_handler(CallbackQueryHandler(daily_tasks, pattern="^daily_tasks$"))
     app.add_handler(CallbackQueryHandler(claim_bonus, pattern="^claim_bonus$"))
     app.add_handler(CallbackQueryHandler(admin_stats, pattern="^admin_stats$"))
