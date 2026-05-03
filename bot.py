@@ -14,7 +14,12 @@ POINTS_PER_USE = 50
 REFERRAL_POINTS = 500
 AD_URL = "https://mostafa865.github.io/boot/ad.html"
 
-mongo = MongoClient(MONGO_URI)
+mongo = MongoClient(
+    MONGO_URI,
+    tls=True,
+    tlsAllowInvalidCertificates=True,
+    serverSelectionTimeoutMS=5000
+)
 db = mongo["botdb"]
 users_col = db["users"]
 
@@ -26,16 +31,34 @@ client = openai.OpenAI(
 TOPIC, TONE, WEEKLY_TOPIC, BROADCAST_MSG = range(4)
 
 def get_user(user_id):
-    uid = str(user_id)
-    user = users_col.find_one({"_id": uid})
+    try:
+        uid = str(user_id)
+        user = users_col.find_one({"_id": uid})
+        if not user:
+            user = {"_id": uid, "points": 300, "uses": 0, "referrals": 0}
+            users_col.insert_one(user)
+        return user
+    except Exception as e:
+        print("Mongo Error:", e)
+        return {"_id": str(user_id), "points": 0, "uses": 0, "referrals": 0}
     if not user:
         user = {"_id": uid, "points": 300, "uses": 0, "referrals": 0}
         users_col.insert_one(user)
     return user
-
 def update_user(user_id, data):
-    uid = str(user_id)
-    users_col.update_one({"_id": uid}, {"$set": data}, upsert=True)
+    try:
+        uid = str(user_id)
+        users_col.update_one({"_id": uid}, {"$set": data}, upsert=True)
+    except Exception as e:
+        print("Mongo Update Error:", e)
+
+
+async def safe_answer(query):
+    try:
+        await safe_answer(query)
+    except:
+        pass
+        
 
 def main_menu():
     keyboard = [
