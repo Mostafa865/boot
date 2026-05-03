@@ -112,7 +112,7 @@ async def get_tone(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
         response = client.chat.completions.create(
-            model="gpt-oss-120b",
+            model="openai/gpt-oss-120b",
             messages=[
                 {"role": "system", "content": "أنت كاتب محتوى محترف ومتخصص في السوشيال ميديا. اكتب محتوى باللغة العربية فقط."},
                 {"role": "user", "content": prompt}
