@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src='//libtl.com/sdk.js' data-zone='10959746' data-sdk='show_10959746'></script>
+    <style>
+        body { background: #1a1a2e; color: white; font-family: Arial; text-align: center; padding: 20px; }
+        .btn { background: #f4a033; padding: 15px 30px; border-radius: 12px; border: none; color: white; font-size: 18px; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <h2>🎲 صندوق الحظ</h2>
+    <button class="btn" id="watchBtn" onclick="watchAd()">▶️ شاهد الإعلان وافتح الصندوق</button>
+    <script>
+        let tg = window.Telegram.WebApp;
+        tg.ready();
+        tg.expand();
+
+        function watchAd() {
+            document.getElementById('watchBtn').disabled = true;
+            show_10959746('pop').then(() => {
+                tg.sendData('box_ad_watched');
+                tg.close();
+            }).catch(() => {
+                alert('حدث خطأ، حاول مرة أخرى');
+                document.getElementById('watchBtn').disabled = false;
+            });
+        }
+    </script>
+</body>
+</html>
