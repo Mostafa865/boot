@@ -17,6 +17,7 @@
             height: 100vh;
             margin: 0;
             text-align: center;
+            padding: 20px;
         }
         .btn {
             background: #6c3df4;
@@ -27,42 +28,42 @@
             font-size: 18px;
             cursor: pointer;
             margin-top: 20px;
+            width: 100%;
         }
-        #timer { font-size: 24px; margin: 20px; color: #a78bfa; }
-        #confirm { display: none; }
+        .btn:disabled {
+            background: #444;
+            cursor: not-allowed;
+        }
+        #status { font-size: 18px; margin: 20px; color: #a78bfa; }
     </style>
 </head>
 <body>
     <h2>📺 شاهد الإعلان واكسب نقاط!</h2>
-    <p>سيظهر الإعلان تلقائياً...</p>
-    <div id="timer"></div>
-    <div id="confirm">
-        <p>✅ شكراً على المشاهدة!</p>
-        <button class="btn" onclick="confirmWatch()">✅ استلم نقاطك</button>
-    </div>
+    <p>اضغط الزر عشان يظهر الإعلان</p>
+    <div id="status"></div>
+    <button class="btn" id="watchBtn" onclick="watchAd()">▶️ شاهد الإعلان</button>
 
     <script>
         const tg = window.Telegram.WebApp;
         tg.ready();
         tg.expand();
 
-        let seconds = 30;
-        const timer = document.getElementById('timer');
-        const confirm = document.getElementById('confirm');
+        function watchAd() {
+            document.getElementById('watchBtn').disabled = true;
+            document.getElementById('status').textContent = '⏳ جاري تحميل الإعلان...';
 
-        show_10959746();
+            show_10959746('pop').then(() => {
+                document.getElementById('status').textContent = '✅ شكراً على المشاهدة!';
+                document.getElementById('watchBtn').textContent = '✅ استلم نقاطك';
+                document.getElementById('watchBtn').disabled = false;
+                document.getElementById('watchBtn').onclick = collectPoints;
+            }).catch(() => {
+                document.getElementById('status').textContent = '❌ حصل خطأ، حاول تاني';
+                document.getElementById('watchBtn').disabled = false;
+            });
+        }
 
-        const interval = setInterval(() => {
-            seconds--;
-            timer.textContent = `⏳ ${seconds} ثانية`;
-            if (seconds <= 0) {
-                clearInterval(interval);
-                timer.textContent = '';
-                confirm.style.display = 'block';
-            }
-        }, 1000);
-
-        function confirmWatch() {
+        function collectPoints() {
             tg.sendData('ad_watched');
             tg.close();
         }
