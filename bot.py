@@ -2,7 +2,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes, ConversationHandler
 import openai
 
-TELEGRAM_TOKEN = "8545099923:AAFA5UI18858JHifhVv4HvuNsyyU5v8jiRQ"
+TELEGRAM_TOKEN = "8545099923:AAH9ggxKf-BsjiNRpfe0lMouf68Kf0JhWP8"
 OPENROUTER_API_KEY = "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"
 
 client = openai.OpenAI(
