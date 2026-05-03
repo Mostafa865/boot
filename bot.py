@@ -458,8 +458,8 @@ try:
                 {"role": "user", "content": prompt}
             ]
         )
-        content = response.choices[0].message.content
-        await query.message.reply_text(
+   content = response.choices[0].message.content
+await query.message.reply_text(
             f"✅ *المحتوى جاهز:*\n\n{content}\n\n"
             "━━━━━━━━━━━━━━━\n"
             f"💎 رصيد نقاطك المتبقي: *{new_points} نقطة*",
