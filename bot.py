@@ -105,8 +105,9 @@ def main_menu():
         [InlineKeyboardButton("📅 جدولة محتوى أسبوعي 🗓", callback_data="weekly")],
         [InlineKeyboardButton("👤 حسابي", callback_data="myaccount"),
         InlineKeyboardButton("🎁 دعوة صديق", callback_data="referral")],
-         [InlineKeyboardButton("📋 مهام اليوم", callback_data="daily_tasks")],
         [InlineKeyboardButton("📺 شاهد إعلان للنقاط", callback_data="watch_ad")],
+        [InlineKeyboardButton("📋 مهام اليوم", callback_data="daily_tasks")],
+
     ]
     return InlineKeyboardMarkup(keyboard)
 
