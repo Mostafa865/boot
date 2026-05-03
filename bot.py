@@ -409,7 +409,7 @@ async def get_tone(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await query.edit_message_text("⏳ بكتبلك المحتوى... انتظر ثانية!")
 
-   user_id = query.from_user.id
+user_id = query.from_user.id
 
 user_data = check_daily_tasks(get_user(user_id))
 
@@ -427,11 +427,13 @@ update_user(user_id, {
 new_points = user_data["points"] - POINTS_PER_USE
 
 # 💾 حفظ كل حاجة
-     update_user(user_id, {
-        "points": new_points,
-        "uses": user_data["uses"] + 1,
-        "tasks": user_data["tasks"]
-    })            
+ update_user(user_id, {
+     "points": new_points,
+     "uses": user_data["uses"] + 1,
+     "tasks": user_data["tasks"]
+           })     
+
+
     prompts = {
         "facebook": f"اكتب بوست فيسبوك احترافي عن '{topic}' بأسلوب {tone}. يكون جذاب ومحفز على التفاعل مع إيموجي مناسبة.",
         "instagram": f"اكتب كابشن انستجرام مميز عن '{topic}' بأسلوب {tone}. يشمل هاشتاقات مناسبة وإيموجي.",
