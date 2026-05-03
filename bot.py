@@ -22,8 +22,8 @@ def main_menu():
          InlineKeyboardButton("🎯 إعلان تسويقي", callback_data="ad")],
         [InlineKeyboardButton("✍️ مقال قصير", callback_data="article"),
          InlineKeyboardButton("💡 أفكار محتوى", callback_data="ideas")],
-        [InlineKeyboardButton("📅 جدولة أسبوعية", callback_data="weekly")
-         InlineKeyboardButton("📅 1جدولة أسبوعية", callback_data="weekly1")],
+        [InlineKeyboardButton("📅 جدولة أسبوعية", callback_data="weekly")],
+         
 
     ]
     return InlineKeyboardMarkup(keyboard)
