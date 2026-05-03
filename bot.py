@@ -1,4 +1,4 @@
-# v2
+# v3
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes, ConversationHandler
 import openai
@@ -9,8 +9,9 @@ TELEGRAM_TOKEN = "8545099923:AAH9ggxKf-BsjiNRpfe0lMouf68Kf0JhWP8"
 OPENROUTER_API_KEY = "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"
 ADMIN_ID = 7825923320
 CHANNEL_USERNAME = "@easy_free_1"
-POINTS_PER_AD = 100
+POINTS_PER_AD = 200
 POINTS_PER_USE = 50
+REFERRAL_POINTS = 500
 DB_FILE = "users.json"
 
 client = openai.OpenAI(
@@ -86,6 +87,22 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = user.id
     name = user.first_name
 
+    if context.args and context.args[0].startswith("ref_"):
+        ref_id = context.args[0].replace("ref_", "")
+        if ref_id != str(user_id):
+            ref_data = get_user(int(ref_id))
+            ref_data["points"] += REFERRAL_POINTS
+            ref_data["referrals"] += 1
+            update_user(int(ref_id), ref_data)
+            try:
+                await context.bot.send_message(
+                    int(ref_id),
+                    f"🎉 صديق جديد انضم عن طريقك!\nتم إضافة *{REFERRAL_POINTS} نقطة* لحسابك 💎",
+                    parse_mode="Markdown"
+                )
+            except:
+                pass
+
     if user_id == ADMIN_ID:
         await update.message.reply_text(
             f"👋 أهلاً *{name}* — لوحة الأدمن 🔧",
@@ -110,12 +127,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     user_data = get_user(user_id)
-    await context.bot.send_message(
-        ADMIN_ID,
-        f"👤 مستخدم جديد دخل البوت:\n"
-        f"الاسم: {name}\n"
-        f"ID: {user_id}"
-    )
+    try:
+        await context.bot.send_message(
+            ADMIN_ID,
+            f"👤 مستخدم جديد دخل البوت:\nالاسم: {name}\nID: {user_id}"
+        )
+    except:
+        pass
 
     await update.message.reply_text(
         f"👋 أهلاً *{name}*!\n\n"
@@ -156,7 +174,8 @@ async def my_account(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"✍️ الاستخدامات: *{user_data['uses']} مرة*\n"
         f"🎁 الدعوات: *{user_data['referrals']} صديق*\n\n"
         f"كل استخدام بيتخصم {POINTS_PER_USE} نقطة\n"
-        f"شاهد إعلان واكسب {POINTS_PER_AD} نقطة 📺",
+        f"شاهد إعلان واكسب {POINTS_PER_AD} نقطة 📺\n"
+        f"دعوة صديق واكسب {REFERRAL_POINTS} نقطة 🎁",
         parse_mode="Markdown",
         reply_markup=InlineKeyboardMarkup([
             [InlineKeyboardButton("🏠 القائمة", callback_data="home")]
@@ -172,7 +191,7 @@ async def referral(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🎁 *دعوة صديق*\n\n"
         "شارك الرابط ده مع أصحابك:\n\n"
         f"`{ref_link}`\n\n"
-        "كل صديق بيدخل عن طريقك بتكسب *100 نقطة* 🎉",
+        f"كل صديق بيدخل عن طريقك بتكسب *{REFERRAL_POINTS} نقطة* 🎉",
         parse_mode="Markdown",
         reply_markup=InlineKeyboardMarkup([
             [InlineKeyboardButton("🏠 القائمة", callback_data="home")]
@@ -208,8 +227,24 @@ async def confirm_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("🏠 القائمة", callback_data="home")]
         ])
     )
-        return ConversationHandler.END
 
+async def handle_platform(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    user_data = get_user(query.from_user.id)
+    if user_data["points"] < POINTS_PER_USE:
+        await query.message.reply_text(
+            f"❌ *نقاطك مش كافية!*\n\n"
+            f"💎 رصيدك: *{user_data['points']} نقطة*\n"
+            f"محتاج: *{POINTS_PER_USE} نقطة*\n\n"
+            "📺 شاهد إعلان واكسب نقاط عشان تكمل!",
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("📺 شاهد إعلان", callback_data="watch_ad")]
+            ])
+        )
+        return ConversationHandler.END
 
     platforms = {
         "facebook": "📘 بوست فيسبوك",
@@ -458,6 +493,7 @@ def main():
     app.add_handler(CallbackQueryHandler(my_account, pattern="^myaccount$"))
     app.add_handler(CallbackQueryHandler(referral, pattern="^referral$"))
     app.add_handler(CallbackQueryHandler(watch_ad, pattern="^watch_ad$"))
+    app.add_handler(CallbackQueryHandler(confirm_ad, pattern="^confirm_ad$"))
     app.add_handler(CallbackQueryHandler(admin_stats, pattern="^admin_stats$"))
     app.add_handler(CallbackQueryHandler(admin_users, pattern="^admin_users$"))
     app.add_handler(CallbackQueryHandler(handle_nav, pattern="^(home|new|admin_back)$"))
