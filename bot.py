@@ -477,7 +477,7 @@ except Exception:
             ])
         )
 
-    return ConversationHandler.END
+return ConversationHandler.END
 
 async def admin_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
