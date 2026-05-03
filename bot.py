@@ -450,10 +450,10 @@ prompts = {
 platform_key = context.user_data['platform_key']
 prompt = prompts.get(platform_key, f"اكتب محتوى عن '{topic}' بأسلوب {tone}.")
 
-    try:
-        response = client.chat.completions.create(
-            model="gpt-oss-120b",
-            messages=[
+try:
+   response = client.chat.completions.create(
+   model="gpt-oss-120b",
+   messages=[
                 {"role": "system", "content": "أنت كاتب محتوى محترف ومتخصص في السوشيال ميديا. اكتب محتوى باللغة العربية فقط."},
                 {"role": "user", "content": prompt}
             ]
