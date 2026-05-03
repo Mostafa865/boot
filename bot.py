@@ -64,24 +64,6 @@ def check_daily_tasks(user):
 
     return user
 
-
-
-
- 
-user = {
-    "_id": uid,
-    "points": 300,
-    "uses": 0,
-    "referrals": 0,
-    "tasks": {
-        "date": today,
-        "ad": False,
-        "used": False,
-        "bonus": False
-    }
-}
-            users_col.insert_one(user)
-        return user
     except Exception as e:
         print("Mongo Error:", e)
         return {"_id": str(user_id), "points": 0, "uses": 0, "referrals": 0}
