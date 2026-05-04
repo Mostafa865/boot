@@ -1057,7 +1057,7 @@ async def mystery_box(update, context):
     # صندوق الحظ يستخدم زر ويب آب من نوع Inline لأنه محدد بمكانه
     await q.message.reply_text(f"🎲 *صندوق {level}* 🎲\n🔥 Streak: {streak}\n⚠️ شاهد الإعلان أولاً:", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(f"🎁 افتح صندوق {level}", web_app=WebAppInfo(url=BOX_AD_URL))]]))
 
-  async def async def watch_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def watch_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
     uid = q.from_user.id
