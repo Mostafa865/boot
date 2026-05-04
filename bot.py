@@ -412,16 +412,25 @@ async def earn_menu(update, context):
     q = update.callback_query
     await q.answer()
     kb = [
-        [InlineKeyboardButton("📺 شاهد إعلان", callback_data="watch_ad")],
-        [InlineKeyboardButton("🎲 صندوق الحظ", callback_data="mystery_box")],
-        [InlineKeyboardButton("🎡 عجلة الحظ", callback_data="wheel")],
-        [InlineKeyboardButton("📋 مهام اليوم", callback_data="daily_tasks")],
-        [InlineKeyboardButton("🎁 دعوة صديق", callback_data="referral_share")],
-        [InlineKeyboardButton("⚔️ تحدي صديق", callback_data="challenge_friend")],
-        [InlineKeyboardButton("🎁 عروض خاصة", callback_data="special_offers")],
-        [InlineKeyboardButton("🔙 رجوع", callback_data="main_back")]
+        [
+            InlineKeyboardButton("📺 شاهد إعلان", callback_data="watch_ad"),
+            InlineKeyboardButton("🎲 صندوق الحظ", callback_data="mystery_box")
+        ],
+        [
+            InlineKeyboardButton("🎡 عجلة الحظ", callback_data="wheel"),
+            InlineKeyboardButton("📋 مهام اليوم", callback_data="daily_tasks")
+        ],
+        [
+            InlineKeyboardButton("🎁 دعوة صديق", callback_data="referral_share"),
+            InlineKeyboardButton("⚔️ تحدي صديق", callback_data="challenge_friend")
+        ],
+        [
+            InlineKeyboardButton("🎁 عروض خاصة", callback_data="special_offers"),
+            InlineKeyboardButton("🔙 رجوع", callback_data="main_back")
+        ]
     ]
     await q.edit_message_text("💰 *كسب النقاط*\nاختر طريقة:", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(kb))
+
 
 async def account_menu(update, context):
     q = update.callback_query
