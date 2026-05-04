@@ -1,4 +1,4 @@
-# v15.1 - النسخة المستقرة (مع إصلاح استقبال بيانات WebApp)
+# v15.2 - النسخة المستقرة مع ميزة تحويل النقاط
 import logging, random, csv, io, asyncio
 from datetime import datetime, timedelta
 from bson.objectid import ObjectId
@@ -32,6 +32,10 @@ AMBASSADOR_THRESHOLD = 10
 MAX_DAILY_COMMISSION = 5000
 EARLY_BIRD_POINTS = 5000
 EARLY_BIRD_LIMIT = 100
+
+# نظام تحويل النقاط العادية إلى قابلة للسحب
+CONVERSION_RATE = 10               # 10% (1000 نقطة عادية → 100 نقطة قابلة للسحب)
+MAX_DAILY_CONVERSION = 5000        # أقصى نقاط عادية يمكن تحويلها يومياً
 
 BOX_LEVELS = {
     "فضة": {"streak_range": (1,5), "prizes": [(50, "😐 حظك عادي", 50), (100, "🙂 مش بطال", 25), (200, "😊 كويس", 25)]},
@@ -68,14 +72,42 @@ def get_user(user_id):
         total_before = users_col.count_documents({})
         early_bird = total_before < EARLY_BIRD_LIMIT
         user = {
-            "_id": uid, "points": 300, "withdrawable_points": 0, "early_bird_rewarded": early_bird, "early_bird_notified": False,
-            "uses": 0, "referrals": 0, "referrer_id": None, "referral_date": None, "total_commission_today": 0,
-            "last_commission_date": "", "referred_users": [], "referral_level2_count": 0, "total_commission_earned": 0,
-            "has_withdrawn_before": False, "first_withdrawal_date": None, "tasks": {"ad": False, "used": False, "bonus": False},
-            "last_task_date": today, "last_box_date": "", "ad_watch_today": 0, "last_ad_date": "", "ad_streak": 0,
-            "ad_multiplier": 1.0, "last_ad_streak_date": "", "weekly_ad_count": 0, "last_contest_week": datetime.utcnow().strftime("%Y-%W"),
-            "weekly_mission_claimed": False, "ambassador_badge": False, "last_daily_report_date": "", "total_ads_watched": 0,
-            "badges": [], "pending_action": None, "challenge_active": None, "challenge_points": 0, "last_challenge_reset": today
+            "_id": uid,
+            "points": 300,
+            "withdrawable_points": 0,
+            "early_bird_rewarded": early_bird,
+            "early_bird_notified": False,
+            "uses": 0,
+            "referrals": 0,
+            "referrer_id": None,
+            "referral_date": None,
+            "total_commission_today": 0,
+            "last_commission_date": "",
+            "referred_users": [],
+            "referral_level2_count": 0,
+            "total_commission_earned": 0,
+            "has_withdrawn_before": False,
+            "first_withdrawal_date": None,
+            "tasks": {"ad": False, "used": False, "bonus": False},
+            "last_task_date": today,
+            "last_box_date": "",
+            "ad_watch_today": 0,
+            "last_ad_date": "",
+            "ad_streak": 0,
+            "ad_multiplier": 1.0,
+            "last_ad_streak_date": "",
+            "weekly_ad_count": 0,
+            "last_contest_week": datetime.utcnow().strftime("%Y-%W"),
+            "weekly_mission_claimed": False,
+            "ambassador_badge": False,
+            "last_daily_report_date": "",
+            "total_ads_watched": 0,
+            "badges": [],
+            "pending_action": None,
+            "challenge_active": None,
+            "challenge_points": 0,
+            "last_challenge_reset": today,
+            "daily_converted": 0          # إضافة حقل التحويل اليومي
         }
         users_col.insert_one(user)
     else:
@@ -84,10 +116,11 @@ def get_user(user_id):
                   "referrer_id","referral_date","total_commission_today","last_commission_date","referred_users",
                   "referral_level2_count","total_commission_earned","has_withdrawn_before","first_withdrawal_date",
                   "weekly_mission_claimed","ambassador_badge","last_daily_report_date","total_ads_watched","badges",
-                  "pending_action","early_bird_rewarded","early_bird_notified","challenge_active","challenge_points","last_challenge_reset"]
+                  "pending_action","early_bird_rewarded","early_bird_notified","challenge_active","challenge_points","last_challenge_reset",
+                  "daily_converted"]
         for field in fields:
             if field not in user:
-                user[field] = None if field in ["referrer_id","referral_date","first_withdrawal_date","last_daily_report_date","pending_action","challenge_active"] else (0 if field in ["total_commission_today","referral_level2_count","total_commission_earned","total_ads_watched","challenge_points"] else ([] if field=="badges" else False))
+                user[field] = None if field in ["referrer_id","referral_date","first_withdrawal_date","last_daily_report_date","pending_action","challenge_active"] else (0 if field in ["total_commission_today","referral_level2_count","total_commission_earned","total_ads_watched","challenge_points","daily_converted"] else ([] if field=="badges" else False))
                 updated = True
         if updated:
             update_user(user_id, {k: user[k] for k in fields})
@@ -104,6 +137,12 @@ def check_daily_tasks(user):
     if "last_task_date" not in user or user["last_task_date"] != today:
         user["tasks"] = {"ad": False, "used": False, "bonus": False}
         user["last_task_date"] = today
+        # إعادة ضبط التحويل اليومي
+        if user.get("daily_converted", 0) != 0:
+            user["daily_converted"] = 0
+            update_user(user["_id"], {"daily_converted": 0, "last_task_date": today, "tasks": user["tasks"]})
+        else:
+            update_user(user["_id"], {"last_task_date": today, "tasks": user["tasks"]})
     return user
 
 def update_ad_streak(user_id, today):
@@ -270,8 +309,15 @@ async def account_menu(update, context):
             f"📺 كل إعلان: +{POINTS_PER_AD} نقطة × المضاعف (حد {MAX_ADS_PER_DAY}/يوم)\n"
             f"🎁 كل دعوة مباشرة: +{REFERRAL_WITHDRAWABLE} نقطة + {REFERRAL_COMMISSION_PERCENT}% عمولة\n"
             f"🎁 كل دعوة غير مباشرة: +{REFERRAL_LEVEL2} نقطة\n"
-            f"💰 التحويل: {POINTS_PER_DOLLAR} نقطة = $1\n🏧 حد السحب: {MIN_WITHDRAW_POINTS} نقطة (${MIN_WITHDRAW_POINTS//POINTS_PER_DOLLAR})")
-    kb = [[InlineKeyboardButton("💰 سحب النقاط", callback_data="withdraw")], [InlineKeyboardButton("🔙 رجوع", callback_data="main_back")]]
+            f"💰 التحويل: {POINTS_PER_DOLLAR} نقطة = $1\n🏧 حد السحب: {MIN_WITHDRAW_POINTS} نقطة (${MIN_WITHDRAW_POINTS//POINTS_PER_DOLLAR})\n\n"
+            f"🔄 تحويل النقاط العادية إلى قابلة للسحب:\n"
+            f"  • نسبة التحويل: {CONVERSION_RATE}% (100 نقطة عادية → {CONVERSION_RATE} نقطة قابلة للسحب)\n"
+            f"  • الحد اليومي: {MAX_DAILY_CONVERSION} نقطة عادية")
+    kb = [
+        [InlineKeyboardButton("🔄 تحويل نقاطي", callback_data="convert_points")],
+        [InlineKeyboardButton("💰 سحب النقاط", callback_data="withdraw")],
+        [InlineKeyboardButton("🔙 رجوع", callback_data="main_back")]
+    ]
     await q.edit_message_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(kb))
 
 async def help_callback(update, context):
@@ -289,7 +335,8 @@ async def help_callback(update, context):
             f"9️⃣ شارات: المدعو الأول، سفير، 100 إعلان، السبوعي، الأسطورة.\n"
             f"🔟 مكافأة التسجيل المبكر: أول {EARLY_BIRD_LIMIT} مستخدم يحصلون على {EARLY_BIRD_POINTS} نقطة (إعلان).\n"
             f"1️⃣1️⃣ العروض الموقوتة: يعلن الأدمن عن مضاعفات محدودة.\n"
-            f"1️⃣2️⃣ مسابقة شهرية: أعلى رصيد يحصل على 50$.")
+            f"1️⃣2️⃣ مسابقة شهرية: أعلى رصيد يحصل على 50$.\n"
+            f"1️⃣3️⃣ تحويل النقاط: حوِّل نقاطك العادية إلى نقاط قابلة للسحب بنسبة {CONVERSION_RATE}% (حد {MAX_DAILY_CONVERSION} نقطة عادية يومياً).")
     kb = [[InlineKeyboardButton("🔙 رجوع", callback_data="main_back")]]
     await q.edit_message_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(kb))
 
@@ -350,6 +397,92 @@ def admin_menu():
           [InlineKeyboardButton("📢 رسالة جماعية", callback_data="admin_broadcast")],
           [InlineKeyboardButton("📁 تصدير Excel", callback_data="admin_export")]]
     return InlineKeyboardMarkup(kb)
+
+# ========== ميزة تحويل النقاط ==========
+async def convert_points(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    uid = query.from_user.id
+    user_data = get_user(uid)
+    # تحديث المهام اليومية (لإعادة ضبط daily_converted إذا لزم الأمر)
+    user_data = check_daily_tasks(user_data)
+    # تحديث قاعدة البيانات بآخر قيمة للمهام (للتأكد)
+    update_user(uid, {"last_task_date": user_data["last_task_date"], "daily_converted": user_data["daily_converted"]})
+
+    remaining_today = MAX_DAILY_CONVERSION - user_data.get("daily_converted", 0)
+    if remaining_today <= 0:
+        await query.message.reply_text(
+            "⚠️ *لقد وصلت إلى الحد الأقصى للتحويل اليومي.*\nارجع غداً للمزيد.",
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 رجوع", callback_data="account_menu")]])
+        )
+        return
+
+    # الحد الأقصى القابل للتحويل بناءً على الرصيد والحد اليومي
+    max_convertible = min(user_data["points"], remaining_today)
+    if max_convertible < 100:
+        await query.message.reply_text(
+            f"❌ *رصيدك العادي لا يكفي للتحويل.*\nالحد الأدنى للتحويل هو 100 نقطة عادية.\nرصيدك الحالي: {user_data['points']} نقطة.\nيمكنك تحويل حتى {remaining_today} نقطة اليوم.",
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 رجوع", callback_data="account_menu")]])
+        )
+        return
+
+    await query.message.reply_text(
+        f"💱 *تحويل النقاط*\n\n"
+        f"رصيدك العادي: *{user_data['points']}*\n"
+        f"الحد الأقصى للتحويل اليومي المتبقي: *{remaining_today}* نقطة\n"
+        f"نسبة التحويل: {CONVERSION_RATE}% (كل 100 نقطة عادية → {CONVERSION_RATE} نقطة قابلة للسحب)\n\n"
+        f"أرسل عدد النقاط العادية التي تريد تحويلها (مضاعفاً للـ 100، بحد أدنى 100).",
+        parse_mode="Markdown"
+    )
+    context.user_data['awaiting_conversion'] = True
+
+async def process_conversion(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.user_data.get('awaiting_conversion'):
+        return
+    uid = update.effective_user.id
+    try:
+        amount = int(update.message.text.strip())
+        if amount <= 0 or amount % 100 != 0:
+            await update.message.reply_text("❌ يجب أن يكون المبلغ مضاعفاً للـ 100 وأكبر من 0.")
+            return
+    except ValueError:
+        await update.message.reply_text("❌ يرجى إرسال رقم صحيح.")
+        return
+
+    user_data = get_user(uid)
+    user_data = check_daily_tasks(user_data)
+    remaining_today = MAX_DAILY_CONVERSION - user_data.get("daily_converted", 0)
+
+    if amount > user_data["points"]:
+        await update.message.reply_text(f"❌ ليس لديك {amount} نقطة عادية. رصيدك الحالي: {user_data['points']}.")
+        return
+    if amount > remaining_today:
+        await update.message.reply_text(f"❌ يتجاوز المبلغ الحد اليومي المتبقي ({remaining_today} نقطة).")
+        return
+
+    withdrawable_gained = int(amount * CONVERSION_RATE / 100)
+    new_points = user_data["points"] - amount
+    new_withdrawable = user_data["withdrawable_points"] + withdrawable_gained
+    new_daily_converted = user_data.get("daily_converted", 0) + amount
+
+    update_user(uid, {
+        "points": new_points,
+        "withdrawable_points": new_withdrawable,
+        "daily_converted": new_daily_converted
+    })
+
+    await update.message.reply_text(
+        f"✅ *تم التحويل بنجاح!*\n\n"
+        f"🔄 حولت *{amount}* نقطة عادية → *{withdrawable_gained}* نقطة قابلة للسحب.\n"
+        f"✨ رصيدك العادي الآن: *{new_points}*\n"
+        f"💰 رصيدك القابل للسحب الآن: *{new_withdrawable}*\n"
+        f"📊 متبقي للتحويل اليوم: *{MAX_DAILY_CONVERSION - new_daily_converted}* نقطة.",
+        parse_mode="Markdown",
+        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏠 القائمة", callback_data="main_back")]])
+    )
+    context.user_data['awaiting_conversion'] = False
 
 # ========== دوال البوت الأساسية ==========
 async def start(update, context):
@@ -954,6 +1087,9 @@ def main():
     app.add_handler(CallbackQueryHandler(handle_nav, pattern="^(home|new|admin_back)$"))
     app.add_handler(CallbackQueryHandler(leaderboard, pattern="^leaderboard$"))
     app.add_handler(CallbackQueryHandler(withdraw_request, pattern="^withdraw$"))
+    # معالج تحويل النقاط (يجب أن يكون بعد الـ ConversationHandler لتجنب التعارض)
+    app.add_handler(CallbackQueryHandler(convert_points, pattern="^convert_points$"))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, process_conversion))
 
     # تشغيل المهام المجدولة
     loop = asyncio.get_event_loop()
