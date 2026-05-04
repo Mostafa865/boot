@@ -475,6 +475,7 @@ async def get_weekly_topic(update, context):
 
 # دوال الإعلانات والمكافآت
 async def handle_web_app_data(update, context):
+    print(f"📩 WebApp data received: {data}")
     data = update.message.web_app_data.data
     uid = update.effective_user.id
     if data == "ad_watched":
