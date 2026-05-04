@@ -1,17 +1,28 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <script src='//whephiwums.com/sdk.js' data-zone='10959746' data-sdk='show_10959746'></script>
 </head>
-<body>
-    <button onclick="send()">اختبار</button>
-    <script>
-        let tg = window.Telegram.WebApp;
-        tg.ready();
-        function send() {
-            tg.sendData('ad_watched');
-            tg.close();
+<body style="text-align:center; padding-top:50px; font-family:sans-serif;">
+
+<h2>📺 شاهد الإعلان وخد نقاط</h2>
+<button onclick="watchAd()" style="padding:15px 30px; font-size:18px;">▶️ مشاهدة الإعلان</button>
+
+<script>
+function watchAd() {
+    show_10959746().then(() => {
+        // ✅ لما الإعلان يخلص
+        if (window.Telegram && Telegram.WebApp) {
+            Telegram.WebApp.sendData("ad_watched");
+            Telegram.WebApp.close();
+        } else {
+            alert("Ad watched, but not inside Telegram");
         }
-    </script>
+    }).catch(() => {
+        alert("❌ لازم تكمل الإعلان للنهاية");
+    });
+}
+</script>
+
 </body>
 </html>
