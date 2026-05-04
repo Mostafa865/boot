@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="ar">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>هدية التسجيل المبكر</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src='//libtl.com/sdk.js' data-zone='10959746' data-sdk='show_10959746'></script>
+    <style>
+        body { background: linear-gradient(135deg, #1a1a2e, #16213e); min-height: 100vh; display: flex; justify-content: center; align-items: center; font-family: 'Segoe UI', sans-serif; padding: 20px; }
+        .container { background: rgba(255,255,255,0.1); border-radius: 24px; padding: 30px 20px; text-align: center; max-width: 320px; width: 100%; }
+        h1 { font-size: 28px; color: #f4a033; margin-bottom: 12px; }
+        p { color: #ddd; margin-bottom: 25px; }
+        .btn { background: #f4a033; border: none; padding: 14px 24px; border-radius: 50px; font-size: 18px; font-weight: bold; color: #1a1a2e; cursor: pointer; width: 100%; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎉 هدية التسجيل المبكر</h1>
+        <p>شاهد الإعلان لتحصل على <strong>5000 نقطة قابلة للسحب</strong>!</p>
+        <button class="btn" id="watchBtn" onclick="startAd()">📺 شاهد الإعلان واستلم الهدية</button>
+    </div>
+    <script>
+        let tg = window.Telegram.WebApp;
+        tg.ready();
+        tg.expand();
+        async function startAd() {
+            const btn = document.getElementById('watchBtn');
+            btn.disabled = true;
+            try {
+                await show_10959746('pop');
+                tg.sendData('early_ad_watched');
+                tg.close();
+            } catch(e) {
+                alert("حدث خطأ، حاول مرة أخرى.");
+                btn.disabled = false;
+            }
+        }
+    </script>
+</body>
+</html>
