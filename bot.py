@@ -536,7 +536,9 @@ async def handle_web_app_data(update, context):
                     await update.message.reply_text("🎉 بونص المهام اليومية! +300 نقطة.", parse_mode="Markdown")
                 else:
                     update_user(uid, {"pending_action": None})
-       elif data == "bonus_ad_watched":
+      
+    
+    elif data == "bonus_ad_watched":
         u = get_user(uid)
         pending = u.get("pending_action")
         if pending and pending.get("type") == "claim_bonus":
