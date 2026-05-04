@@ -1,4 +1,4 @@
-# v15.2 - النسخة المستقرة مع ميزة تحويل النقاط
+# v15.2 - النسخة المستقرة مع ميزة تحويل النقاط (مع ترتيب معالجات مصحح)
 import logging, random, csv, io, asyncio
 from datetime import datetime, timedelta
 from bson.objectid import ObjectId
@@ -403,6 +403,7 @@ async def convert_points(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     uid = query.from_user.id
+    print(f"DEBUG: convert_points called by user {uid}")
     user_data = get_user(uid)
     # تحديث المهام اليومية (لإعادة ضبط daily_converted إذا لزم الأمر)
     user_data = check_daily_tasks(user_data)
@@ -439,6 +440,7 @@ async def convert_points(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['awaiting_conversion'] = True
 
 async def process_conversion(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    print(f"DEBUG: process_conversion called, awaiting_conversion={context.user_data.get('awaiting_conversion')}")
     if not context.user_data.get('awaiting_conversion'):
         return
     uid = update.effective_user.id
@@ -1048,20 +1050,31 @@ async def scheduled_tasks(app):
 # ========== تشغيل البوت ==========
 def main():
     app = Application.builder().token(TELEGRAM_TOKEN).build()
-    # معالج WebApp Data يجب أن يكون أول معالج
+    
+    # 1. معالج WebApp Data (يجب أن يكون أولاً)
     app.add_handler(MessageHandler(filters.StatusUpdate.WEB_APP_DATA, handle_web_app_data))
+    
+    # 2. معالج تحويل النقاط (يوضع قبل ConversationHandler)
+    app.add_handler(CallbackQueryHandler(convert_points, pattern="^convert_points$"))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, process_conversion))
+    
+    # 3. ConversationHandler (للمحتوى، التحدي، البث)
     conv = ConversationHandler(
         entry_points=[CallbackQueryHandler(handle_platform, pattern="^(facebook|instagram|twitter|linkedin|email|ad|article|ideas)$"),
                       CallbackQueryHandler(weekly, pattern="^weekly$"),
                       CallbackQueryHandler(admin_broadcast_start, pattern="^admin_broadcast$"),
                       MessageHandler(filters.TEXT & ~filters.COMMAND, challenge_target)],
-        states={TOPIC:[MessageHandler(filters.TEXT & ~filters.COMMAND, get_topic)],
-                TONE:[CallbackQueryHandler(get_tone, pattern="^tone_")],
-                WEEKLY_TOPIC:[MessageHandler(filters.TEXT & ~filters.COMMAND, get_weekly_topic)],
-                BROADCAST_MSG:[MessageHandler(filters.TEXT & ~filters.COMMAND, admin_broadcast_send)]},
+        states={
+            TOPIC: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_topic)],
+            TONE: [CallbackQueryHandler(get_tone, pattern="^tone_")],
+            WEEKLY_TOPIC: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_weekly_topic)],
+            BROADCAST_MSG: [MessageHandler(filters.TEXT & ~filters.COMMAND, admin_broadcast_send)]
+        },
         fallbacks=[CommandHandler("start", start)]
     )
     app.add_handler(conv)
+    
+    # 4. باقي المعالجات (أزرار، أوامر)
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("offer", admin_flash_offer))
     app.add_handler(CommandHandler("stopoffer", admin_stop_offer))
@@ -1087,14 +1100,11 @@ def main():
     app.add_handler(CallbackQueryHandler(handle_nav, pattern="^(home|new|admin_back)$"))
     app.add_handler(CallbackQueryHandler(leaderboard, pattern="^leaderboard$"))
     app.add_handler(CallbackQueryHandler(withdraw_request, pattern="^withdraw$"))
-    # معالج تحويل النقاط (يجب أن يكون بعد الـ ConversationHandler لتجنب التعارض)
-    app.add_handler(CallbackQueryHandler(convert_points, pattern="^convert_points$"))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, process_conversion))
-
+    
     # تشغيل المهام المجدولة
     loop = asyncio.get_event_loop()
     loop.create_task(scheduled_tasks(app))
-
+    
     app.run_polling()
 
 if __name__ == "__main__":
