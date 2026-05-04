@@ -15,6 +15,7 @@ POINTS_PER_AD = 200
 POINTS_PER_USE = 50
 REFERRAL_POINTS = 500
 AD_URL = "https://mostafa865.github.io/boot/ad.html"
+BOX_AD_URL = "https://mostafa865.github.io/boot/box_ad.html"
 
 MYSTERY_BOX_PRIZES = [
     (50, "😐 حظك عادي", 50),
@@ -201,6 +202,7 @@ async def mystery_box(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_data = get_user(user_id)
     today = datetime.utcnow().strftime("%Y-%m-%d")
 
+    # منع التكرار في نفس اليوم
     if user_data.get("last_box_date") == today:
         await query.message.reply_text(
             "🎲 *صندوق الحظ*\n\n"
@@ -213,21 +215,14 @@ async def mystery_box(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    await query.message.reply_text("🎲 *بنفتح الصندوق...*\n\n🎰 جاري السحب...", parse_mode="Markdown")
-
-    prize_points, prize_msg = spin_mystery_box()
-    new_points = user_data["points"] + prize_points
-    update_user(user_id, {"points": new_points, "last_box_date": today})
-
+    # عرض زر فتح الصندوق عبر WebApp (الإعلان)
     await query.message.reply_text(
-        f"🎁 *نتيجة صندوق الحظ*\n\n"
-        f"{prize_msg}\n\n"
-        f"🎊 ربحت *{prize_points} نقطة*!\n"
-        f"💎 رصيدك الحالي: *{new_points} نقطة*\n\n"
-        f"ارجع بكره عشان تفتح الصندوق تاني! 🔄",
+        "🎲 *صندوق الحظ*\n\n"
+        "⚠️ شاهد الإعلان أولاً، ثم سيتم فتح الصندوق تلقائياً.\n"
+        "اضغط الزر أدناه 👇",
         parse_mode="Markdown",
         reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("🏠 القائمة", callback_data="home")]
+            [InlineKeyboardButton("🎁 شاهد الإعلان وافتح الصندوق", web_app=WebAppInfo(url=BOX_AD_URL))]
         ])
     )
 
@@ -282,25 +277,42 @@ async def watch_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def handle_web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = update.message.web_app_data.data
+    user_id = update.effective_user.id
+
     if data == "ad_watched":
-        user_id = update.effective_user.id
-        user_data = check_daily_tasks(get_user(user_id))
-        user_data["tasks"]["ad"] = True
-        new_points = user_data["points"] + POINTS_PER_AD
+        # ... الكود الموجود بالفعل ...
+        pass
+
+    elif data == "box_ad_watched":
+        user_data = get_user(user_id)
+        today = datetime.utcnow().strftime("%Y-%m-%d")
+
+        # منع التكرار (أمان إضافي)
+        if user_data.get("last_box_date") == today:
+            await update.message.reply_text("❌ لقد فتحت الصندوق اليوم بالفعل!")
+            return
+
+        # حساب الجائزة العشوائية
+        prize_points, prize_msg = spin_mystery_box()
+        new_points = user_data["points"] + prize_points
+
+        # تحديث الرصيد وتسجيل التاريخ
         update_user(user_id, {
             "points": new_points,
-            "tasks": user_data["tasks"],
-            "last_task_date": user_data["last_task_date"]
+            "last_box_date": today
         })
+
         await update.message.reply_text(
-            f"✅ *تم إضافة {POINTS_PER_AD} نقطة!*\n\n"
-            f"💎 رصيدك الحالي: *{new_points} نقطة*",
+            f"🎁 *نتيجة صندوق الحظ*\n\n"
+            f"{prize_msg}\n\n"
+            f"🎊 ربحت *{prize_points} نقطة*!\n"
+            f"💎 رصيدك الحالي: *{new_points} نقطة*\n\n"
+            f"ارجع بكره عشان تفتح الصندوق تاني! 🔄",
             parse_mode="Markdown",
             reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton("🏠 القائمة", callback_data="home")]
             ])
         )
-
 async def handle_platform(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
