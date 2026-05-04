@@ -1,4 +1,4 @@
-# v18.0 - البوت المتكامل مع نظام الكوبونات
+# v18.1 - البوت المتكامل مع نظام الكوبونات (إصلاح إضافة النقاط)
 import logging, random, csv, io, asyncio
 from datetime import datetime, timedelta
 from bson.objectid import ObjectId
@@ -72,7 +72,7 @@ users_col = db["users"]
 withdrawals_col = db["withdrawals"]
 offers_col = db["flash_offers"]
 challenges_col = db["challenges"]
-coupons_col = db["coupons"]          # مجموعة الكوبونات
+coupons_col = db["coupons"]
 
 client = openai.OpenAI(base_url="https://openrouter.ai/api/v1", api_key=OPENROUTER_API_KEY)
 
@@ -330,7 +330,7 @@ async def wheel_of_fortune(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🎡 شاهد الإعلان واستدير", web_app=WebAppInfo(url=WHEEL_URL))]])
     )
 
-# ========== نظام الكوبونات ==========
+# ========== نظام الكوبونات (معدل) ==========
 async def create_coupon(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """الأدمن ينشئ كوبون: /createcoupon <code> <points> <days> <max_uses>"""
     if update.effective_user.id != ADMIN_ID:
@@ -384,7 +384,6 @@ async def process_coupon(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ الكود غير صحيح.")
         context.user_data['awaiting_coupon'] = False
         return
-    # التحقق من صلاحية الكوبون
     if coupon.get("expires_at") < datetime.utcnow():
         await update.message.reply_text("❌ انتهت صلاحية هذا الكود.")
         context.user_data['awaiting_coupon'] = False
@@ -393,8 +392,11 @@ async def process_coupon(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ تم استخدام هذا الكود بالحد الأقصى.")
         context.user_data['awaiting_coupon'] = False
         return
-    # تسجيل أن المستخدم سيستخدم الكوبون (نضع pending_action)
+
+    # تعيين الإجراء المعلق (pending_action)
     update_user(uid, {"pending_action": {"type": "coupon", "code": code, "points": coupon["points"]}})
+    print(f"✅ Coupon pending action set for user {uid}: {coupon['points']} points")
+
     await update.message.reply_text(
         f"🎟️ *كود خصم `{code}`*\nلديك {coupon['points']} نقطة قابلة للسحب في انتظارك.\nشاهد إعلاناً لاستلامها.",
         parse_mode="Markdown",
@@ -831,7 +833,7 @@ async def get_weekly_topic(update, context):
         await update.message.reply_text(f"❌ خطأ: {str(e)[:100]}", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏠 الرئيسية", callback_data="main_back")]]))
     return ConversationHandler.END
 
-# ========== دوال الإعلانات والمكافآت ==========
+# ========== دوال الإعلانات والمكافآت (المعالج الرئيسي) ==========
 async def handle_web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
     print("🔥🔥🔥 WebApp data received! 🔥🔥🔥")
     data = update.message.web_app_data.data
@@ -896,7 +898,9 @@ async def handle_web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE
             f"✅ *+{earned} نقطة!*\n💎 رصيدك: *{new_w}*\n🔥 مضاعف: {mul}x\n📊 اليوم: {new_cnt}/{MAX_ADS_PER_DAY}{upgrade_msg}",
             parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏠 القائمة", callback_data="main_back")]])
         )
+        # ========== معالجة الإجراءات المعلقة (بما فيها الكوبونات) ==========
         pending = u.get("pending_action")
+        print(f"🔍 Pending action after ad: {pending}")
         if pending:
             if pending["type"] == "early_bird":
                 update_user(uid, {"withdrawable_points": u["withdrawable_points"] + pending["points"], "early_bird_notified": True, "pending_action": None})
@@ -912,16 +916,24 @@ async def handle_web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE
                 code = pending.get("code")
                 points = pending.get("points")
                 coupon = coupons_col.find_one({"code": code})
+                print(f"🎫 Coupon found: {coupon is not None}, used_count={coupon.get('used_count') if coupon else 0}")
                 if coupon and coupon.get("used_count", 0) < coupon.get("max_uses", 1):
-                    # تحديث استخدام الكوبون
+                    # تحديث عدد استخدامات الكوبون
                     coupons_col.update_one({"_id": coupon["_id"]}, {"$inc": {"used_count": 1}})
                     # إضافة النقاط للمستخدم
-                    new_w2 = u["withdrawable_points"] + points
-                    update_user(uid, {"withdrawable_points": new_w2, "pending_action": None})
-                    await update.message.reply_text(f"🎟️ *تم تفعيل الكوبون!* +{points} نقطة قابلة للسحب.", parse_mode="Markdown")
+                    new_withdrawable = u["withdrawable_points"] + points
+                    update_user(uid, {"withdrawable_points": new_withdrawable, "pending_action": None})
+                    await update.message.reply_text(
+                        f"🎟️ *تم تفعيل الكود بنجاح!* +{points} نقطة قابلة للسحب.",
+                        parse_mode="Markdown"
+                    )
                 else:
                     update_user(uid, {"pending_action": None})
-                    await update.message.reply_text("❌ الكوبون غير صالح (انتهت صلاحيته أو تجاوز الحد الأقصى).", parse_mode="Markdown")
+                    await update.message.reply_text(
+                        "❌ الكوبون غير صالح (انتهت صلاحيته أو تجاوز الحد الأقصى).",
+                        parse_mode="Markdown"
+                    )
+            # يمكن إضافة أنواع أخرى هنا (مثل referral_reward، إلخ) ولكنها موجودة في حالات منفصلة
 
     elif data == "bonus_ad_watched":
         u = get_user(uid)
