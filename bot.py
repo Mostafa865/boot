@@ -1,4 +1,4 @@
-# v15.2 - النسخة المستقرة مع ميزة تحويل النقاط (مع ترتيب معالجات مصحح)
+# v16.0 - النسخة النهائية مع نظام المستويات المتقدم (فتح المستوى بإعلانات)
 import logging, random, csv, io, asyncio
 from datetime import datetime, timedelta
 from bson.objectid import ObjectId
@@ -17,8 +17,8 @@ CHANNEL_USERNAME = "@easy_free_1"
 
 # ========== الثوابت ==========
 POINTS_PER_USE = 50
-POINTS_PER_AD = 100
-MAX_ADS_PER_DAY = 15
+POINTS_PER_AD = 250               # زيادة النقاط لكل إعلان ( بدلاً من 100 )
+MAX_ADS_PER_DAY = 8               # تقليل الحد اليومي للإعلانات
 REFERRAL_WITHDRAWABLE = 3000
 REFERRAL_LEVEL2 = 500
 REFERRAL_COMMISSION_PERCENT = 10
@@ -34,8 +34,20 @@ EARLY_BIRD_POINTS = 5000
 EARLY_BIRD_LIMIT = 100
 
 # نظام تحويل النقاط العادية إلى قابلة للسحب
-CONVERSION_RATE = 10               # 10% (1000 نقطة عادية → 100 نقطة قابلة للسحب)
-MAX_DAILY_CONVERSION = 5000        # أقصى نقاط عادية يمكن تحويلها يومياً
+CONVERSION_RATE = 10               # 10%
+MAX_DAILY_CONVERSION = 5000
+
+# ========== نظام المستويات المتقدم ==========
+# المستويات مرتبة تصاعدياً حسب النقاط المطلوبة
+LEVELS = {
+    "مبتدئ": {"points": 0, "unlock_ads": 0, "reward": 0, "multiplier": 1.0},
+    "نشيط": {"points": 10000, "unlock_ads": 5, "reward": 2000, "multiplier": 1.05},
+    "محترف": {"points": 50000, "unlock_ads": 10, "reward": 5000, "multiplier": 1.1},
+    "VIP": {"points": 150000, "unlock_ads": 20, "reward": 10000, "multiplier": 1.2},
+    "أسطورة": {"points": 500000, "unlock_ads": 50, "reward": 25000, "multiplier": 1.5}
+}
+# قائمة المستويات بالترتيب (للتكرار)
+LEVELS_LIST = ["مبتدئ", "نشيط", "محترف", "VIP", "أسطورة"]
 
 BOX_LEVELS = {
     "فضة": {"streak_range": (1,5), "prizes": [(50, "😐 حظك عادي", 50), (100, "🙂 مش بطال", 25), (200, "😊 كويس", 25)]},
@@ -43,7 +55,6 @@ BOX_LEVELS = {
     "ألماس": {"streak_range": (11,100), "prizes": [(500, "🔥 ممتاز", 40), (1000, "🎉 رائع", 35), (2000, "🏆 جاكبوت", 25)]}
 }
 
-# URLs for different ad types (ensure these are correct)
 AD_URL = "https://mostafa865.github.io/boot/ad.html"
 BOX_AD_URL = "https://mostafa865.github.io/boot/box_ad.html"
 BONUS_AD_URL = "https://mostafa865.github.io/boot/bonus_ad.html"
@@ -63,7 +74,7 @@ client = openai.OpenAI(base_url="https://openrouter.ai/api/v1", api_key=OPENROUT
 
 TOPIC, TONE, WEEKLY_TOPIC, BROADCAST_MSG = range(4)
 
-# ========== دوال قاعدة البيانات ==========
+# ========== دوال قاعدة البيانات المتقدمة ==========
 def get_user(user_id):
     uid = str(user_id)
     user = users_col.find_one({"_id": uid})
@@ -107,7 +118,12 @@ def get_user(user_id):
             "challenge_active": None,
             "challenge_points": 0,
             "last_challenge_reset": today,
-            "daily_converted": 0          # إضافة حقل التحويل اليومي
+            "daily_converted": 0,
+            # حقول نظام المستويات
+            "level": "مبتدئ",
+            "level_reward_claimed": False,
+            "pending_level_upgrade": None,   # {"target_level": "محترف", "ads_remaining": 10, "points_achieved": True}
+            "highest_total_points": 300       # أعلى قيمة تاريخية للنقاط الإجمالية (عادية + قابلة)
         }
         users_col.insert_one(user)
     else:
@@ -117,10 +133,13 @@ def get_user(user_id):
                   "referral_level2_count","total_commission_earned","has_withdrawn_before","first_withdrawal_date",
                   "weekly_mission_claimed","ambassador_badge","last_daily_report_date","total_ads_watched","badges",
                   "pending_action","early_bird_rewarded","early_bird_notified","challenge_active","challenge_points","last_challenge_reset",
-                  "daily_converted"]
+                  "daily_converted","level","level_reward_claimed","pending_level_upgrade","highest_total_points"]
         for field in fields:
             if field not in user:
-                user[field] = None if field in ["referrer_id","referral_date","first_withdrawal_date","last_daily_report_date","pending_action","challenge_active"] else (0 if field in ["total_commission_today","referral_level2_count","total_commission_earned","total_ads_watched","challenge_points","daily_converted"] else ([] if field=="badges" else False))
+                if field in ["level","level_reward_claimed","pending_level_upgrade","highest_total_points"]:
+                    user[field] = "مبتدئ" if field=="level" else (False if field=="level_reward_claimed" else (None if field=="pending_level_upgrade" else 300))
+                else:
+                    user[field] = None if field in ["referrer_id","referral_date","first_withdrawal_date","last_daily_report_date","pending_action","challenge_active","pending_level_upgrade"] else (0 if field in ["total_commission_today","referral_level2_count","total_commission_earned","total_ads_watched","challenge_points","daily_converted","highest_total_points"] else ([] if field=="badges" else False))
                 updated = True
         if updated:
             update_user(user_id, {k: user[k] for k in fields})
@@ -137,7 +156,6 @@ def check_daily_tasks(user):
     if "last_task_date" not in user or user["last_task_date"] != today:
         user["tasks"] = {"ad": False, "used": False, "bonus": False}
         user["last_task_date"] = today
-        # إعادة ضبط التحويل اليومي
         if user.get("daily_converted", 0) != 0:
             user["daily_converted"] = 0
             update_user(user["_id"], {"daily_converted": 0, "last_task_date": today, "tasks": user["tasks"]})
@@ -197,6 +215,103 @@ def can_add_commission(user_id, amount):
         update_user(user_id, {"total_commission_today": user.get("total_commission_today",0) + amount})
         return True
     return False
+
+# ========== دوال إدارة المستويات ==========
+def get_current_level_info(user):
+    level = user.get("level", "مبتدئ")
+    return LEVELS.get(level, LEVELS["مبتدئ"])
+
+def get_next_level(user):
+    current = user.get("level", "مبتدئ")
+    try:
+        idx = LEVELS_LIST.index(current)
+        if idx + 1 < len(LEVELS_LIST):
+            return LEVELS_LIST[idx+1]
+    except:
+        pass
+    return None
+
+def check_and_process_level_upgrade(user_id):
+    """تتحقق من إمكانية الترقية (نقاط وإعلانات معلقة) وتنفذ الترقية إذا اكتملت"""
+    user = get_user(user_id)
+    current_level = user.get("level", "مبتدئ")
+    next_level_name = get_next_level(user)
+    if not next_level_name:
+        return None   # أعلى مستوى بالفعل
+    next_level = LEVELS[next_level_name]
+    # حساب أعلى رصيد تاريخي (أقصى مجموع عادي + قابل للصرف)
+    current_total = user["points"] + user["withdrawable_points"]
+    highest = user.get("highest_total_points", current_total)
+    if current_total > highest:
+        update_user(user_id, {"highest_total_points": current_total})
+        highest = current_total
+
+    pending = user.get("pending_level_upgrade")
+    # الشرط الأساسي: النقاط المطلوبة للمستوى التالي (على أساس أعلى قيمة تاريخية)
+    points_condition = highest >= next_level["points"]
+    if not points_condition:
+        # إذا كان هناك ترقية معلقة سابقة ولكن النقاط أصبحت أقل؟ لا نمسحها، نتركها.
+        return None
+
+    if not pending:
+        # بدء ترقية معلقة: نخزن المستوى المطلوب وعدد الإعلانات المتبقية
+        pending_data = {
+            "target_level": next_level_name,
+            "ads_remaining": next_level["unlock_ads"]
+        }
+        update_user(user_id, {"pending_level_upgrade": pending_data})
+        # إرسال إشعار للمستخدم
+        try:
+            bot = Application.builder().token(TELEGRAM_TOKEN).build().bot
+            # لا يمكن إرسال رسالة هنا بسهولة – سنرسل لاحقاً عند طلب الترقية أو في دالة منفصلة.
+            # لكن يمكن إرسالها عند الحاجة. سنكتفي بتعليق.
+        except:
+            pass
+        return None
+
+    # يوجد ترقية معلقة
+    if pending.get("target_level") != next_level_name:
+        # ربما تغير المستوى المستهدف بسبب تغيير النقاط؟ نحدثه
+        pending["target_level"] = next_level_name
+        pending["ads_remaining"] = next_level["unlock_ads"]
+        update_user(user_id, {"pending_level_upgrade": pending})
+        return None
+
+    # هنا نتحقق من أن الإعلانات المتبقية صارت صفراً (ستُحدث من معالج الإعلانات)
+    if pending.get("ads_remaining", 0) <= 0:
+        # تم إكمال الإعلانات المطلوبة – ننفذ الترقية
+        # منح المكافأة (نقاط قابلة للسحب)
+        reward = next_level["reward"]
+        new_withdrawable = user["withdrawable_points"] + reward
+        update_user(user_id, {
+            "level": next_level_name,
+            "level_reward_claimed": True,
+            "withdrawable_points": new_withdrawable,
+            "pending_level_upgrade": None
+        })
+        # إضافة شارة خاصة بالمستوى (اختياري)
+        if next_level_name == "VIP":
+            add_badge(user_id, "VIP")
+        elif next_level_name == "أسطورة":
+            add_badge(user_id, "أسطورة")
+        # إشعار المستخدم
+        # (سنرسل لاحقاً) 
+        return {"new_level": next_level_name, "reward": reward}
+    return None
+
+def reduce_pending_level_ads(user_id):
+    """تُستدعى عند مشاهدة إعلان، لتقليل عدد الإعلانات المتبقية لفتح المستوى"""
+    user = get_user(user_id)
+    pending = user.get("pending_level_upgrade")
+    if not pending:
+        return False
+    remaining = pending.get("ads_remaining", 0)
+    if remaining <= 0:
+        return False
+    remaining -= 1
+    pending["ads_remaining"] = remaining
+    update_user(user_id, {"pending_level_upgrade": pending})
+    return True
 
 # ========== العروض الموقوتة ==========
 def get_active_flash_offer():
@@ -301,12 +416,28 @@ async def account_menu(update, context):
         if data["streak_range"][0] <= next_streak <= data["streak_range"][1]:
             next_level = lvl
             break
+    # معلومات المستوى الحالي والترقية المعلقة
+    level_name = u.get("level", "مبتدئ")
+    level_info = LEVELS.get(level_name, LEVELS["مبتدئ"])
+    next_level_name = get_next_level(u)
+    pending = u.get("pending_level_upgrade")
+    next_level_text = ""
+    if next_level_name:
+        next_lvl = LEVELS[next_level_name]
+        remaining_ads = pending.get("ads_remaining", next_lvl["unlock_ads"]) if pending else next_lvl["unlock_ads"]
+        highest = u.get("highest_total_points", u["points"]+u["withdrawable_points"])
+        points_needed = max(0, next_lvl["points"] - highest)
+        next_level_text = f"\n🎯 *المستوى التالي:* {next_level_name}\n   • النقاط المتبقية: {points_needed}\n   • إعلانات متبقية لفتح المستوى: {remaining_ads}"
+    else:
+        next_level_text = "\n🏆 *أنت في أعلى مستوى (أسطورة)!* 🏆"
+
     text = (f"👤 *حسابي*\n\n{ambassador}"
             f"✨ نقاط عادية: *{u['points']}*\n💰 نقاط قابلة للسحب: *{u.get('withdrawable_points',0)}*\n"
             f"✍️ استخدامات: *{u['uses']}*\n🎁 دعوات مباشرة: *{u['referrals']}*\n"
             f"🎁 دعوات غير مباشرة: *{u.get('referral_level2_count',0)}*\n🔥 Streak: *{u.get('ad_streak',0)} يوم* (مضاعف {u.get('ad_multiplier',1.0)}x)\n"
-            f"📊 إجمالي الإعلانات: *{u.get('total_ads_watched',0)}*\n🎲 غداً صندوقك: *{next_level}*\n\n{badges_text}\n\n"
-            f"📺 كل إعلان: +{POINTS_PER_AD} نقطة × المضاعف (حد {MAX_ADS_PER_DAY}/يوم)\n"
+            f"📊 إجمالي الإعلانات: *{u.get('total_ads_watched',0)}*\n🎲 غداً صندوقك: *{next_level}*\n\n{badges_text}\n"
+            f"⭐ *مستواك:* {level_name} (مضاعف {level_info['multiplier']}x للإعلانات){next_level_text}\n\n"
+            f"📺 كل إعلان: +{POINTS_PER_AD} نقطة × المضاعفات (حد {MAX_ADS_PER_DAY}/يوم)\n"
             f"🎁 كل دعوة مباشرة: +{REFERRAL_WITHDRAWABLE} نقطة + {REFERRAL_COMMISSION_PERCENT}% عمولة\n"
             f"🎁 كل دعوة غير مباشرة: +{REFERRAL_LEVEL2} نقطة\n"
             f"💰 التحويل: {POINTS_PER_DOLLAR} نقطة = $1\n🏧 حد السحب: {MIN_WITHDRAW_POINTS} نقطة (${MIN_WITHDRAW_POINTS//POINTS_PER_DOLLAR})\n\n"
@@ -336,7 +467,8 @@ async def help_callback(update, context):
             f"🔟 مكافأة التسجيل المبكر: أول {EARLY_BIRD_LIMIT} مستخدم يحصلون على {EARLY_BIRD_POINTS} نقطة (إعلان).\n"
             f"1️⃣1️⃣ العروض الموقوتة: يعلن الأدمن عن مضاعفات محدودة.\n"
             f"1️⃣2️⃣ مسابقة شهرية: أعلى رصيد يحصل على 50$.\n"
-            f"1️⃣3️⃣ تحويل النقاط: حوِّل نقاطك العادية إلى نقاط قابلة للسحب بنسبة {CONVERSION_RATE}% (حد {MAX_DAILY_CONVERSION} نقطة عادية يومياً).")
+            f"1️⃣3️⃣ تحويل النقاط: حوِّل نقاطك العادية إلى نقاط قابلة للسحب بنسبة {CONVERSION_RATE}% (حد {MAX_DAILY_CONVERSION} نقطة عادية يومياً).\n"
+            f"1️⃣4️⃣ المستويات: تترقى إلى مستويات أعلى (نشيط، محترف، VIP، أسطورة) عند جمع النقاط ومشاهدة إعلانات محددة. كل مستوى يمنح مضاعفاً أكبر ومكافآت.")
     kb = [[InlineKeyboardButton("🔙 رجوع", callback_data="main_back")]]
     await q.edit_message_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(kb))
 
@@ -403,11 +535,8 @@ async def convert_points(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     uid = query.from_user.id
-    print(f"DEBUG: convert_points called by user {uid}")
     user_data = get_user(uid)
-    # تحديث المهام اليومية (لإعادة ضبط daily_converted إذا لزم الأمر)
     user_data = check_daily_tasks(user_data)
-    # تحديث قاعدة البيانات بآخر قيمة للمهام (للتأكد)
     update_user(uid, {"last_task_date": user_data["last_task_date"], "daily_converted": user_data["daily_converted"]})
 
     remaining_today = MAX_DAILY_CONVERSION - user_data.get("daily_converted", 0)
@@ -419,7 +548,6 @@ async def convert_points(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # الحد الأقصى القابل للتحويل بناءً على الرصيد والحد اليومي
     max_convertible = min(user_data["points"], remaining_today)
     if max_convertible < 100:
         await query.message.reply_text(
@@ -440,7 +568,6 @@ async def convert_points(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['awaiting_conversion'] = True
 
 async def process_conversion(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    print(f"DEBUG: process_conversion called, awaiting_conversion={context.user_data.get('awaiting_conversion')}")
     if not context.user_data.get('awaiting_conversion'):
         return
     uid = update.effective_user.id
@@ -604,7 +731,7 @@ async def get_weekly_topic(update, context):
         await update.message.reply_text(f"❌ خطأ: {str(e)[:100]}", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏠 الرئيسية", callback_data="main_back")]]))
     return ConversationHandler.END
 
-# ========== دوال الإعلانات والمكافآت (المعالج الأساسي لبيانات WebApp) ==========
+# ========== دوال الإعلانات والمكافآت ==========
 async def handle_web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
     print("🔥🔥🔥 WebApp data received! 🔥🔥🔥")
     data = update.message.web_app_data.data
@@ -614,7 +741,6 @@ async def handle_web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE
     if data == "ad_watched":
         u = get_user(uid)
         today = datetime.utcnow().strftime("%Y-%m-%d")
-        # إعادة ضبط عدد الإعلانات اليومية إذا تغير اليوم
         if u.get("last_ad_date") != today:
             update_user(uid, {"ad_watch_today": 0, "last_ad_date": today})
             u["ad_watch_today"] = 0
@@ -624,17 +750,27 @@ async def handle_web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE
         flash = get_active_flash_offer()
         mul = update_ad_streak(uid, today)
         multiplier = flash["multiplier"] if flash else 1
-        earned = int(POINTS_PER_AD * mul * multiplier)
+        # مضاعف المستوى
+        level_multiplier = LEVELS.get(u.get("level", "مبتدئ"), LEVELS["مبتدئ"])["multiplier"]
+        earned = int(POINTS_PER_AD * mul * multiplier * level_multiplier)
         new_w = u["withdrawable_points"] + earned
         new_cnt = u["ad_watch_today"] + 1
         new_total = u.get("total_ads_watched", 0) + 1
         update_user(uid, {"withdrawable_points": new_w, "ad_watch_today": new_cnt, "last_ad_date": today, "total_ads_watched": new_total})
+        # تحديث أعلى رصيد تاريخي
+        current_total = u["points"] + u["withdrawable_points"]
+        highest = u.get("highest_total_points", 0)
+        if current_total > highest:
+            update_user(uid, {"highest_total_points": current_total})
+        # شارة 100 إعلان
         if new_total >= 100 and "100 إعلان" not in u.get("badges", []):
             add_badge(uid, "100 إعلان")
             try: await context.bot.send_message(uid, "🏅 شارة 100 إعلان!", parse_mode="Markdown")
             except: pass
+        # تحديات الأصدقاء
         if u.get("challenge_active"):
             update_user(uid, {"challenge_points": u.get("challenge_points", 0) + earned})
+        # المسابقة الأسبوعية
         cweek = datetime.utcnow().strftime("%Y-%W")
         if u.get("last_contest_week") != cweek:
             update_user(uid, {"weekly_ad_count": 0, "last_contest_week": cweek, "weekly_mission_claimed": False})
@@ -644,6 +780,7 @@ async def handle_web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE
         if new_weekly >= WEEKLY_MISSION_TARGET and not u.get("weekly_mission_claimed"):
             update_user(uid, {"withdrawable_points": u["withdrawable_points"] + WEEKLY_MISSION_REWARD, "weekly_mission_claimed": True})
             await update.message.reply_text(f"🎉 مهمة أسبوعية مكتملة! +{WEEKLY_MISSION_REWARD} نقطة.", parse_mode="Markdown")
+        # عمولة الإحالات
         rid = u.get("referrer_id")
         if rid and u.get("referral_date"):
             if (datetime.utcnow() - datetime.fromisoformat(u["referral_date"])).days <= 30:
@@ -653,10 +790,22 @@ async def handle_web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE
                     update_user(rid, {"withdrawable_points": ref["withdrawable_points"] + comm, "total_commission_earned": ref.get("total_commission_earned", 0) + comm})
                     try: await context.bot.send_message(rid, f"🎁 عمولة إحالة: +{comm} نقطة!", parse_mode="Markdown")
                     except: pass
+        # المهام اليومية
         u2 = check_daily_tasks(get_user(uid))
         u2["tasks"]["ad"] = True
         update_user(uid, {"tasks": u2["tasks"]})
-        await update.message.reply_text(f"✅ *+{earned} نقطة!*\n💎 رصيدك: *{new_w}*\n🔥 مضاعف: {mul}x\n📊 اليوم: {new_cnt}/{MAX_ADS_PER_DAY}", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏠 القائمة", callback_data="main_back")]]))
+        # تقليل عدد الإعلانات المطلوبة لفتح المستوى (إذا كانت هناك ترقية معلقة)
+        reduced = reduce_pending_level_ads(uid)
+        # التحقق من إتمام الترقية
+        upgrade_result = check_and_process_level_upgrade(uid)
+        upgrade_msg = ""
+        if upgrade_result:
+            upgrade_msg = f"\n\n🎉 *تهانينا! لقد تم ترقيتك إلى مستوى {upgrade_result['new_level']}!* 🎉\n✅ مكافأة +{upgrade_result['reward']} نقطة قابلة للسحب."
+        await update.message.reply_text(
+            f"✅ *+{earned} نقطة!*\n💎 رصيدك: *{new_w}*\n🔥 مضاعف: {mul}x\n📊 اليوم: {new_cnt}/{MAX_ADS_PER_DAY}{upgrade_msg}",
+            parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏠 القائمة", callback_data="main_back")]])
+        )
+        # معالجة الإجراءات المعلقة (early_bird, claim_bonus ...)
         pending = u.get("pending_action")
         if pending:
             if pending["type"] == "early_bird":
@@ -751,10 +900,15 @@ async def watch_ad(update, context):
     if u.get("ad_watch_today", 0) >= MAX_ADS_PER_DAY:
         await q.message.reply_text(f"❌ الحد اليومي {MAX_ADS_PER_DAY}", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏠 القائمة", callback_data="main_back")]]))
         return
+    # إظهار مضاعف المستوى في رسالة الإعلان
+    level_multiplier = LEVELS.get(u.get("level", "مبتدئ"), LEVELS["مبتدئ"])["multiplier"]
     mul = update_ad_streak(uid, today)
-    earn = int(POINTS_PER_AD * mul)
+    earn = int(POINTS_PER_AD * mul * level_multiplier)
     remaining = MAX_ADS_PER_DAY - u["ad_watch_today"]
-    await q.message.reply_text(f"📺 *شاهد الإعلان*\n🔥 مضاعف: {mul}x\n💰 ستربح: {earn} نقطة\n📊 تبقى لك: {remaining} إعلان.", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("📺 شاهد", web_app=WebAppInfo(url=AD_URL))]]))
+    await q.message.reply_text(
+        f"📺 *شاهد الإعلان*\n🔥 مضاعف Streak: {mul}x\n⭐ مضاعف المستوى: {level_multiplier}x\n💰 ستربح: {earn} نقطة\n📊 تبقى لك: {remaining} إعلان.",
+        parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("📺 شاهد", web_app=WebAppInfo(url=AD_URL))]])
+    )
 
 async def daily_tasks(update, context):
     q = update.callback_query
@@ -815,11 +969,11 @@ async def withdraw_request(update, context):
 
 # ========== دوال المتصدرين والأدمن ==========
 def get_leaderboard(limit=10):
-    cursor = users_col.find({}, {"_id": 1, "points": 1, "withdrawable_points": 1}).sort("points", -1).limit(limit)
+    cursor = users_col.find({}, {"_id": 1, "points": 1, "withdrawable_points": 1, "level": 1}).sort("points", -1).limit(limit)
     res = []
     for i, u in enumerate(cursor):
         total = u.get("points", 0) + u.get("withdrawable_points", 0)
-        res.append({"rank": i+1, "user_id": u["_id"], "total_points": total})
+        res.append({"rank": i+1, "user_id": u["_id"], "total_points": total, "level": u.get("level", "مبتدئ")})
     return res
 
 async def leaderboard(update, context):
@@ -835,7 +989,7 @@ async def leaderboard(update, context):
                 name = (await context.bot.get_chat(int(e["user_id"]))).first_name
             except:
                 name = f"مستخدم {e['user_id'][-4:]}"
-            text += f"{e['rank']}. {name} — 💎 {e['total_points']} نقطة\n"
+            text += f"{e['rank']}. {name} — 💎 {e['total_points']} نقطة (مستوى {e['level']})\n"
     await q.edit_message_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 رجوع", callback_data="main_back")]]))
 
 async def admin_stats(update, context):
@@ -940,13 +1094,13 @@ async def admin_export(update, context):
     if q.from_user.id != ADMIN_ID: return
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(["ID","Name","Points","Withdrawable","Uses","Referrals","Withdrawn","Join Date","Ads","Badges"])
+    writer.writerow(["ID","Name","Points","Withdrawable","Uses","Referrals","Withdrawn","Join Date","Ads","Badges","Level"])
     for user in users_col.find():
         try:
             name = (await context.bot.get_chat(int(user["_id"]))).first_name
         except:
             name = "Unknown"
-        writer.writerow([user["_id"], name, user.get("points",0), user.get("withdrawable_points",0), user.get("uses",0), user.get("referrals",0), user.get("has_withdrawn_before",False), user.get("last_task_date",""), user.get("total_ads_watched",0), ", ".join(user.get("badges",[]))])
+        writer.writerow([user["_id"], name, user.get("points",0), user.get("withdrawable_points",0), user.get("uses",0), user.get("referrals",0), user.get("has_withdrawn_before",False), user.get("last_task_date",""), user.get("total_ads_watched",0), ", ".join(user.get("badges",[])), user.get("level","مبتدئ")])
     output.seek(0)
     await q.message.reply_document(document=io.BytesIO(output.getvalue().encode()), filename="users_export.csv", caption="📊 تصدير البيانات")
     await q.message.reply_text("✅ تم التصدير.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 رجوع", callback_data="admin_back")]]))
@@ -1050,15 +1204,12 @@ async def scheduled_tasks(app):
 # ========== تشغيل البوت ==========
 def main():
     app = Application.builder().token(TELEGRAM_TOKEN).build()
-    
-    # 1. معالج WebApp Data (يجب أن يكون أولاً)
+    # معالج WebApp Data أولاً
     app.add_handler(MessageHandler(filters.StatusUpdate.WEB_APP_DATA, handle_web_app_data))
-    
-    # 2. معالج تحويل النقاط (يوضع قبل ConversationHandler)
+    # معالج تحويل النقاط
     app.add_handler(CallbackQueryHandler(convert_points, pattern="^convert_points$"))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, process_conversion))
-    
-    # 3. ConversationHandler (للمحتوى، التحدي، البث)
+    # ConversationHandler
     conv = ConversationHandler(
         entry_points=[CallbackQueryHandler(handle_platform, pattern="^(facebook|instagram|twitter|linkedin|email|ad|article|ideas)$"),
                       CallbackQueryHandler(weekly, pattern="^weekly$"),
@@ -1073,8 +1224,7 @@ def main():
         fallbacks=[CommandHandler("start", start)]
     )
     app.add_handler(conv)
-    
-    # 4. باقي المعالجات (أزرار، أوامر)
+    # باقي المعالجات
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("offer", admin_flash_offer))
     app.add_handler(CommandHandler("stopoffer", admin_stop_offer))
@@ -1100,11 +1250,11 @@ def main():
     app.add_handler(CallbackQueryHandler(handle_nav, pattern="^(home|new|admin_back)$"))
     app.add_handler(CallbackQueryHandler(leaderboard, pattern="^leaderboard$"))
     app.add_handler(CallbackQueryHandler(withdraw_request, pattern="^withdraw$"))
-    
-    # تشغيل المهام المجدولة
+
+    # المهام المجدولة
     loop = asyncio.get_event_loop()
     loop.create_task(scheduled_tasks(app))
-    
+
     app.run_polling()
 
 if __name__ == "__main__":
