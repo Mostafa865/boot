@@ -7,18 +7,14 @@
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src='//libtl.com/sdk.js' data-zone='10959746' data-sdk='show_10959746'></script>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
             min-height: 100vh;
             display: flex;
             justify-content: center;
             align-items: center;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-family: 'Segoe UI', sans-serif;
             padding: 20px;
         }
         .container {
@@ -29,20 +25,9 @@
             text-align: center;
             max-width: 320px;
             width: 100%;
-            box-shadow: 0 8px 20px rgba(0,0,0,0.3);
-            border: 1px solid rgba(255,255,255,0.2);
         }
-        h1 {
-            font-size: 28px;
-            margin-bottom: 12px;
-            color: #f4a033;
-        }
-        p {
-            font-size: 16px;
-            color: #ddd;
-            margin-bottom: 25px;
-            line-height: 1.4;
-        }
+        h1 { font-size: 28px; color: #f4a033; margin-bottom: 12px; }
+        p { color: #ddd; margin-bottom: 25px; }
         .btn {
             background: #f4a033;
             border: none;
@@ -52,89 +37,67 @@
             font-weight: bold;
             color: #1a1a2e;
             cursor: pointer;
-            transition: all 0.3s ease;
             width: 100%;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
-        }
-        .btn:active {
-            transform: scale(0.96);
+            margin-top: 10px;
         }
         .btn:disabled {
             background: #444;
             color: #aaa;
             cursor: not-allowed;
-            transform: none;
         }
-        .loader {
-            display: none;
-            margin-top: 15px;
-            font-size: 14px;
-            color: #f4a033;
-        }
-        .error {
-            display: none;
-            margin-top: 15px;
-            color: #ff6b6b;
-            font-size: 13px;
-        }
+        .loader { display: none; margin-top: 15px; color: #f4a033; }
+        .error { display: none; margin-top: 15px; color: #ff6b6b; }
+        .claim-btn { background: #28a745; display: none; }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>📺 شاهد الإعلان</h1>
-        <p>شاهد الإعلان كاملاً واكسب <strong>نقاطاً قابلة للسحب</strong> 🎁</p>
-        <button class="btn" id="watchBtn" onclick="startAd()">▶️ شاهد الإعلان الآن</button>
+        <p id="statusText">شاهد الإعلان كاملاً ثم اضغط استلام</p>
+        <button class="btn" id="watchBtn" onclick="startAd()">▶️ شاهد الإعلان</button>
+        <button class="btn claim-btn" id="claimBtn" onclick="claimReward()">🎁 استلام المكافأة</button>
         <div class="loader" id="loader">⏳ جاري تحميل الإعلان...</div>
-        <div class="error" id="errorMsg">❌ فشل في تحميل الإعلان. حاول مرة أخرى.</div>
+        <div class="error" id="errorMsg">❌ فشل التحميل، حاول مجدداً.</div>
     </div>
 
     <script>
         let tg = window.Telegram.WebApp;
         tg.ready();
-        tg.expand();   // توسيع الويب آب لملء الشاشة
+        tg.expand();
 
-        const btn = document.getElementById('watchBtn');
+        const watchBtn = document.getElementById('watchBtn');
+        const claimBtn = document.getElementById('claimBtn');
         const loader = document.getElementById('loader');
-        const errorMsgDiv = document.getElementById('errorMsg');
+        const errorDiv = document.getElementById('errorMsg');
+        const statusText = document.getElementById('statusText');
 
-        function showError() {
-            errorMsgDiv.style.display = 'block';
-            setTimeout(() => { errorMsgDiv.style.display = 'none'; }, 3000);
-        }
-
-        function showLoader() {
-            loader.style.display = 'block';
-        }
-
-        function hideLoader() {
-            loader.style.display = 'none';
-        }
+        function showLoader() { loader.style.display = 'block'; }
+        function hideLoader() { loader.style.display = 'none'; }
+        function showError() { errorDiv.style.display = 'block'; setTimeout(() => errorDiv.style.display = 'none', 3000); }
 
         async function startAd() {
-            btn.disabled = true;
+            watchBtn.disabled = true;
             showLoader();
-
             try {
-                // تأكد من تحميل SDK بشكل صحيح
-                if (typeof show_10959746 !== 'function') {
-                    throw new Error('Monetag SDK not loaded');
-                }
-                // عرض الإعلان وانتظار إكماله
+                if (typeof show_10959746 !== 'function') throw new Error('SDK not loaded');
                 await show_10959746('pop');
-                
-                // إرسال الإشارة إلى البوت
-                tg.sendData('ad_watched');
-                
-                // انتظار 500 مللي ثانية قبل الإغلاق لضمان وصول البيانات
-                setTimeout(() => {
-                    tg.close();
-                }, 500);
+                // بعد انتهاء الإعلان، نخفي زر المشاهدة ونظهر زر الاستلام
+                watchBtn.style.display = 'none';
+                claimBtn.style.display = 'block';
+                statusText.innerText = '✅ تم مشاهدة الإعلان! اضغط استلام للمكافأة.';
+                hideLoader();
             } catch (err) {
                 console.error(err);
                 showError();
-                btn.disabled = false;
+                watchBtn.disabled = false;
                 hideLoader();
             }
+        }
+
+        function claimReward() {
+            // إرسال الإشارة للبوت ثم إغلاق الويب آب
+            tg.sendData('ad_watched');
+            setTimeout(() => { tg.close(); }, 300);
         }
     </script>
 </body>
