@@ -475,7 +475,10 @@ async def get_weekly_topic(update, context):
 
 # دوال الإعلانات والمكافآت
 async def handle_web_app_data(update, context):
-    print(f"📩 WebApp data received: {data}")
+    async def handle_web_app_data(update, context):
+    print("🔥🔥🔥 WebApp data received! 🔥🔥🔥")
+    data = update.message.web_app_data.data
+    print(f"Data: {data}")
     data = update.message.web_app_data.data
     uid = update.effective_user.id
     if data == "ad_watched":
@@ -919,7 +922,8 @@ async def scheduled_tasks(app):
 
 # ========== تشغيل البوت ==========
 def main():
-    app = Application.builder().token(TELEGRAM_TOKEN).build()
+   app.add_handler(MessageHandler(filters.StatusUpdate.WEB_APP_DATA, handle_web_app_data))
+   app = Application.builder().token(TELEGRAM_TOKEN).build()
     conv = ConversationHandler(
         entry_points=[CallbackQueryHandler(handle_platform, pattern="^(facebook|instagram|twitter|linkedin|email|ad|article|ideas)$"),
                       CallbackQueryHandler(weekly, pattern="^weekly$"),
