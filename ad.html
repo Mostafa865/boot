@@ -1,113 +1,17 @@
 <!DOCTYPE html>
-<html lang="ar">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>شاهد إعلان واكسب نقاط</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <script src='//libtl.com/sdk.js' data-zone='10959746' data-sdk='show_10959746'></script>
-    <style>
-        body {
-            background: #1a1a2e;
-            color: white;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            text-align: center;
-            padding: 20px;
-            margin: 0;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
-        }
-        .container {
-            max-width: 350px;
-            background: rgba(0,0,0,0.3);
-            border-radius: 24px;
-            padding: 30px 20px;
-            backdrop-filter: blur(10px);
-        }
-        .btn {
-            background: #f4a033;
-            border: none;
-            padding: 14px 24px;
-            border-radius: 50px;
-            font-size: 18px;
-            font-weight: bold;
-            color: #1a1a2e;
-            cursor: pointer;
-            width: 100%;
-            margin: 10px 0;
-            transition: 0.2s;
-        }
-        .btn:disabled {
-            background: #444;
-            cursor: not-allowed;
-            color: #aaa;
-        }
-        .status {
-            margin-top: 15px;
-            font-size: 14px;
-            color: #ccc;
-        }
-        .hidden {
-            display: none;
-        }
-    </style>
 </head>
 <body>
-<div class="container">
-    <h2>📺 شاهد الإعلان واكسب نقاط</h2>
-    <div id="step1">
-        <p>اضغط الزر أدناه لمشاهدة الإعلان. بعد الانتهاء، سيظهر زر استلام.</p>
-        <button class="btn" id="watchBtn">▶️ شاهد الإعلان</button>
-    </div>
-    <div id="step2" class="hidden">
-        <p>✅ تم مشاهدة الإعلان بنجاح!</p>
-        <p>اضغط "استلام المكافأة" لإضافة النقاط ثم إغلاق النافذة.</p>
-        <button class="btn" id="claimBtn">🎁 استلام المكافأة</button>
-    </div>
-    <div class="status" id="statusMsg"></div>
-</div>
-
-<script>
-    let tg = window.Telegram.WebApp;
-    tg.ready();
-    tg.expand();
-
-    const step1 = document.getElementById('step1');
-    const step2 = document.getElementById('step2');
-    const watchBtn = document.getElementById('watchBtn');
-    const claimBtn = document.getElementById('claimBtn');
-    const statusDiv = document.getElementById('statusMsg');
-
-    watchBtn.onclick = async () => {
-        watchBtn.disabled = true;
-        statusDiv.innerText = "⏳ جاري تحميل الإعلان...";
-        try {
-            if (typeof show_10959746 !== 'function') throw new Error("SDK not loaded");
-            // عرض الإعلان
-            await show_10959746('pop');
-            // بعد مشاهدة الإعلان
-            statusDiv.innerText = "✅ تم مشاهدة الإعلان!";
-            step1.classList.add('hidden');
-            step2.classList.remove('hidden');
-        } catch (err) {
-            console.error(err);
-            statusDiv.innerText = "❌ فشل تحميل الإعلان، حاول مجدداً.";
-            watchBtn.disabled = false;
-        }
-    };
-
-    claimBtn.onclick = () => {
-        statusDiv.innerText = "📤 جاري إرسال البيانات...";
-        claimBtn.disabled = true;
-        // إرسال الإشارة إلى البوت
-        tg.sendData('ad_watched');
-        // انتظار نصف ثانية ثم إغلاق الويب آب
-        setTimeout(() => {
+    <button onclick="send()">🎁 اضغط لاستلام النقاط (تجريبي)</button>
+    <script>
+        let tg = window.Telegram.WebApp;
+        tg.ready();
+        function send() {
+            tg.sendData('ad_watched');
             tg.close();
-        }, 500);
-    };
-</script>
+        }
+    </script>
 </body>
 </html>
