@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        body { background: #1a1a2e; color: white; text-align: center; padding: 20px; font-family: 'Segoe UI', sans-serif; }
+        .btn { background: #f4a033; border: none; padding: 20px 40px; border-radius: 50px; font-size: 22px; font-weight: bold; cursor: pointer; margin-top: 30px; }
+        h1 { color: #f4a033; }
+    </style>
+</head>
+<body>
+    <h1>🎡 عجلة الحظ</h1>
+    <p>اضغط الزر لتدوير العجلة والحصول على نقاطك</p>
+    <button class="btn" onclick="spin()">🎡 اضغط لتدوير العجلة</button>
+    <script>
+        let tg = window.Telegram.WebApp;
+        tg.ready();
+        function spin() {
+            tg.sendData('wheel_spun');
+            tg.close();
+        }
+    </script>
+</body>
+</html>
