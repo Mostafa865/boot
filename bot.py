@@ -389,10 +389,10 @@ async def challenge_target(update, context):
 # ========== القوائم ==========
 def main_menu():
     kb = [
-        [InlineKeyboardButton("✍️ كتابة محتوى", callback_data="content_menu")],
-        [InlineKeyboardButton("💰 كسب النقاط", callback_data="earn_menu")],
-        [InlineKeyboardButton("👤 حسابي", callback_data="account_menu")],
-        [InlineKeyboardButton("🏆 المتصدرين", callback_data="leaderboard")],
+        [InlineKeyboardButton("✍️ كتابة محتوى", callback_data="content_menu"),
+         InlineKeyboardButton("💰 كسب النقاط", callback_data="earn_menu")],
+        [InlineKeyboardButton("👤 حسابي", callback_data="account_menu"),
+         InlineKeyboardButton("🏆 المتصدرين", callback_data="leaderboard")],
         [InlineKeyboardButton("ℹ️ تعليمات", callback_data="help")]
     ]
     return InlineKeyboardMarkup(kb)
@@ -400,13 +400,20 @@ def main_menu():
 async def content_menu(update, context):
     q = update.callback_query
     await q.answer()
-    kb = [[InlineKeyboardButton("📘 بوست فيسبوك", callback_data="facebook"), InlineKeyboardButton("📸 كابشن انستجرام", callback_data="instagram")],
-          [InlineKeyboardButton("🐦 تويت تويتر", callback_data="twitter"), InlineKeyboardButton("💼 بوست لينكدإن", callback_data="linkedin")],
-          [InlineKeyboardButton("📧 إيميل احترافي", callback_data="email"), InlineKeyboardButton("🎯 إعلان تسويقي", callback_data="ad")],
-          [InlineKeyboardButton("✍️ مقال قصير", callback_data="article"), InlineKeyboardButton("💡 أفكار محتوى", callback_data="ideas")],
-          [InlineKeyboardButton("📅 جدولة محتوى أسبوعي", callback_data="weekly")],
-          [InlineKeyboardButton("🔙 رجوع", callback_data="main_back")]]
+    kb = [
+        [InlineKeyboardButton("📘 بوست فيسبوك", callback_data="facebook"),
+         InlineKeyboardButton("📸 كابشن انستجرام", callback_data="instagram")],
+        [InlineKeyboardButton("🐦 تويت تويتر", callback_data="twitter"),
+         InlineKeyboardButton("💼 بوست لينكدإن", callback_data="linkedin")],
+        [InlineKeyboardButton("📧 إيميل احترافي", callback_data="email"),
+         InlineKeyboardButton("🎯 إعلان تسويقي", callback_data="ad")],
+        [InlineKeyboardButton("✍️ مقال قصير", callback_data="article"),
+         InlineKeyboardButton("💡 أفكار محتوى", callback_data="ideas")],
+        [InlineKeyboardButton("📅 جدولة محتوى أسبوعي", callback_data="weekly")],
+        [InlineKeyboardButton("🔙 رجوع", callback_data="main_back")]
+    ]
     await q.edit_message_text("✍️ *اختر نوع المحتوى:*", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(kb))
+
 
 async def earn_menu(update, context):
     q = update.callback_query
