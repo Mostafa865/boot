@@ -2,7 +2,7 @@
 <html lang="ar">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
     <title>شاهد إعلان واكسب نقاط</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src='//libtl.com/sdk.js' data-zone='10959746' data-sdk='show_10959746'></script>
@@ -115,17 +115,20 @@
             showLoader();
 
             try {
-                // استدعاء إعلان Monetag (تأكد من رقم المنطقة)
-                // يجب أن يكون show_10959746 معرفاً عالمياً (تم تحميله بواسطة SDK)
+                // تأكد من تحميل SDK بشكل صحيح
                 if (typeof show_10959746 !== 'function') {
                     throw new Error('Monetag SDK not loaded');
                 }
-                // الانتظار حتى يكمل المستخدم مشاهدة الإعلان
+                // عرض الإعلان وانتظار إكماله
                 await show_10959746('pop');
                 
-                // بعد مشاهدة الإعلان بنجاح
+                // إرسال الإشارة إلى البوت
                 tg.sendData('ad_watched');
-                tg.close();   // إغلاق الويب آب فوراً
+                
+                // انتظار 500 مللي ثانية قبل الإغلاق لضمان وصول البيانات
+                setTimeout(() => {
+                    tg.close();
+                }, 500);
             } catch (err) {
                 console.error(err);
                 showError();
