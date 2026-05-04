@@ -2,41 +2,67 @@
 <html lang="ar">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>شاهد إعلان واكسب نقاط</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src='//libtl.com/sdk.js' data-zone='10959746' data-sdk='show_10959746'></script>
     <style>
-        body { background: #1a1a2e; color: white; font-family: Arial; text-align: center; padding: 20px; }
-        .btn { background: #f4a033; padding: 15px 30px; border-radius: 12px; border: none; font-size: 18px; cursor: pointer; }
+        body { background: #1a1a2e; color: white; font-family: 'Segoe UI', sans-serif; text-align: center; padding: 20px; margin: 0; }
+        .container { max-width: 350px; margin: 0 auto; padding: 20px; background: rgba(0,0,0,0.3); border-radius: 20px; }
+        .btn { background: #f4a033; border: none; padding: 14px 24px; border-radius: 40px; font-size: 18px; font-weight: bold; color: #1a1a2e; cursor: pointer; width: 100%; margin: 10px 0; }
+        .btn:disabled { background: #444; cursor: not-allowed; }
+        .hidden { display: none; }
+        .status { margin-top: 15px; font-size: 16px; }
     </style>
 </head>
 <body>
-    <h2>📺 شاهد الإعلان</h2>
-    <p>اضغط الزر لتحصل على نقاطك فوراً (يظهر إعلان بعد ذلك)</p>
-    <button class="btn" id="watchBtn">🎁 اضغط لاستلام النقاط ومشاهدة الإعلان</button>
+    <div class="container">
+        <h2>📺 شاهد الإعلان</h2>
+        <div id="step1">
+            <p>شاهد الإعلان كاملاً ثم اضغط الزر أدناه للحصول على نقاطك.</p>
+            <button class="btn" id="watchBtn">📺 شاهد الإعلان</button>
+        </div>
+        <div id="step2" class="hidden">
+            <p>✅ تم مشاهدة الإعلان! تم إضافة نقاطك.</p>
+            <p>يمكنك الآن إغلاق هذه النافذة.</p>
+            <button class="btn" id="closeBtn">🔚 إغلاق</button>
+        </div>
+        <div class="status" id="statusMsg"></div>
+    </div>
+
     <script>
         let tg = window.Telegram.WebApp;
         tg.ready();
         tg.expand();
 
-        const btn = document.getElementById('watchBtn');
-        btn.onclick = () => {
-            // 1. أولاً نرسل إشارة 'ad_watched' إلى البوت (تمنح النقاط فوراً)
-            tg.sendData('ad_watched');
-            // 2. نعطي المستخدم رسالة أنه تم إضافة النقاط
-            btn.disabled = true;
-            btn.innerText = '✅ تم إضافة نقاطك! جاري فتح الإعلان...';
-            // 3. بعد نصف ثانية نعرض الإعلان (حتى يشاهد المستخدم شيئاً)
-            setTimeout(() => {
-                if (typeof show_10959746 === 'function') {
-                    show_10959746('pop').catch(e => console.error);
-                } else {
-                    alert('خطأ في تحميل الإعلان، لكن النقاط أضيفت.');
-                }
-                // نغلق الويب آب بعد عرض الإعلان بثواني (اختياري)
-                setTimeout(() => tg.close(), 8000);
-            }, 500);
+        const step1 = document.getElementById('step1');
+        const step2 = document.getElementById('step2');
+        const watchBtn = document.getElementById('watchBtn');
+        const closeBtn = document.getElementById('closeBtn');
+        const statusMsg = document.getElementById('statusMsg');
+
+        watchBtn.onclick = async () => {
+            watchBtn.disabled = true;
+            statusMsg.innerText = "⏳ جاري تحميل الإعلان...";
+            try {
+                if (typeof show_10959746 !== 'function') throw new Error("SDK not loaded");
+                // عرض الإعلان
+                await show_10959746('pop');
+                // بعد انتهاء الإعلان، نرسل الإشارة فوراً
+                tg.sendData('ad_watched');
+                // نغير الواجهة لإظهار زر الإغلاق
+                step1.classList.add('hidden');
+                step2.classList.remove('hidden');
+                statusMsg.innerText = "✅ تم إرسال طلب إضافة النقاط!";
+            } catch (err) {
+                console.error(err);
+                statusMsg.innerText = "❌ حدث خطأ، حاول مرة أخرى.";
+                watchBtn.disabled = false;
+            }
+        };
+
+        closeBtn.onclick = () => {
+            tg.close();
         };
     </script>
 </body>
