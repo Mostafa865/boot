@@ -4,26 +4,23 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <script src='//whephiwums.com/sdk.js' data-zone='10959746' data-sdk='show_10959746'></script>
+    <!-- استبدل YOUR_BLOCK_ID بالمعرف الذي ستحصل عليه من AdsGram -->
+    <script src="https://adsgram.ai/js/adsgram.min.js" data-block-id="YOUR_BLOCK_ID"></script>
+    <style> ... </style>
 </head>
-<body style="text-align:center; padding-top:50px;">
-    <button onclick="startAd()">📺 شاهد الإعلان المكافأ</button>
+<body>
+    <button onclick="startAd()">📺 شاهد الإعلان</button>
     <script>
         let tg = window.Telegram.WebApp;
         tg.ready();
-        tg.expand();
-
         async function startAd() {
             try {
-                // عرض الإعلان المكافأ (بدون 'pop')
-                await show_10959746();
-                // بعد إكمال الإعلان بنجاح
-                tg.sendData('ad_watched');
-                // إغلاق الويب آب بعد إرسال الإشارة
-                setTimeout(() => tg.close(), 500);
-            } catch (e) {
-                alert("فشل تحميل الإعلان: " + e);
-            }
+                const result = await window.Adsgram.showRewardedVideo();
+                if (result.done) {
+                    tg.sendData('ad_watched'); // ✅ عايز تمنح النقاط هنا
+                    tg.close();
+                }
+            } catch (e) { alert("فشل تحميل الإعلان: " + e.message); }
         }
     </script>
 </body>
