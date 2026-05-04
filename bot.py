@@ -1,4 +1,4 @@
-# v17.0 - البوت المتكامل (عجلة الحظ 3 مرات يومياً)
+# v18.0 - البوت المتكامل مع نظام الكوبونات
 import logging, random, csv, io, asyncio
 from datetime import datetime, timedelta
 from bson.objectid import ObjectId
@@ -48,8 +48,8 @@ LEVELS = {
 LEVELS_LIST = ["مبتدئ", "نشيط", "محترف", "VIP", "أسطورة"]
 
 # ========== عجلة الحظ ==========
-WHEEL_PRIZES = [50, 100, 200, 500, 1000, 2000]   # نقاط (ستكون قابلة للسحب)
-WHEEL_DAILY_LIMIT = 3                            # عدد المرات المسموحة يومياً
+WHEEL_PRIZES = [50, 100, 200, 500, 1000, 2000]
+WHEEL_DAILY_LIMIT = 3
 WHEEL_URL = "https://mostafa865.github.io/boot/wheel.html"
 
 BOX_LEVELS = {
@@ -72,6 +72,7 @@ users_col = db["users"]
 withdrawals_col = db["withdrawals"]
 offers_col = db["flash_offers"]
 challenges_col = db["challenges"]
+coupons_col = db["coupons"]          # مجموعة الكوبونات
 
 client = openai.OpenAI(base_url="https://openrouter.ai/api/v1", api_key=OPENROUTER_API_KEY)
 
@@ -126,7 +127,6 @@ def get_user(user_id):
             "level_reward_claimed": False,
             "pending_level_upgrade": None,
             "highest_total_points": 300,
-            # عجلة الحظ
             "wheel_spins_today": 0,
             "last_wheel_date": ""
         }
@@ -169,7 +169,6 @@ def check_daily_tasks(user):
             update_user(user["_id"], {"daily_converted": 0, "last_task_date": today, "tasks": user["tasks"]})
         else:
             update_user(user["_id"], {"last_task_date": today, "tasks": user["tasks"]})
-        # إعادة ضبط عجلة الحظ
         if user.get("last_wheel_date") != today:
             update_user(user["_id"], {"wheel_spins_today": 0, "last_wheel_date": today})
     return user
@@ -331,6 +330,78 @@ async def wheel_of_fortune(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🎡 شاهد الإعلان واستدير", web_app=WebAppInfo(url=WHEEL_URL))]])
     )
 
+# ========== نظام الكوبونات ==========
+async def create_coupon(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """الأدمن ينشئ كوبون: /createcoupon <code> <points> <days> <max_uses>"""
+    if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("⛔ غير مصرح.")
+        return
+    try:
+        code = context.args[0].upper()
+        points = int(context.args[1])
+        days = int(context.args[2])
+        max_uses = int(context.args[3])
+        expires_at = datetime.utcnow() + timedelta(days=days)
+        coupon = {
+            "code": code,
+            "points": points,
+            "max_uses": max_uses,
+            "used_count": 0,
+            "expires_at": expires_at,
+            "created_by": ADMIN_ID,
+            "created_at": datetime.utcnow()
+        }
+        coupons_col.insert_one(coupon)
+        await update.message.reply_text(
+            f"✅ تم إنشاء الكوبون:\n"
+            f"• الكود: `{code}`\n"
+            f"• النقاط: {points}\n"
+            f"• الصلاحية: {days} يوم\n"
+            f"• الحد الأقصى للاستخدام: {max_uses}",
+            parse_mode="Markdown"
+        )
+    except Exception as e:
+        await update.message.reply_text(f"❌ خطأ: استخدم `/createcoupon <كود> <نقاط> <أيام> <حد_الاستخدام>`\n{str(e)}")
+
+async def redeem_coupon(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """يطلب من المستخدم إدخال كود الكوبون"""
+    query = update.callback_query
+    await query.answer()
+    uid = query.from_user.id
+    await query.message.reply_text(
+        "🎟️ *استخدام كود خصم*\nأرسل الكود الآن:",
+        parse_mode="Markdown"
+    )
+    context.user_data['awaiting_coupon'] = True
+
+async def process_coupon(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.user_data.get('awaiting_coupon'):
+        return
+    uid = update.effective_user.id
+    code = update.message.text.strip().upper()
+    coupon = coupons_col.find_one({"code": code})
+    if not coupon:
+        await update.message.reply_text("❌ الكود غير صحيح.")
+        context.user_data['awaiting_coupon'] = False
+        return
+    # التحقق من صلاحية الكوبون
+    if coupon.get("expires_at") < datetime.utcnow():
+        await update.message.reply_text("❌ انتهت صلاحية هذا الكود.")
+        context.user_data['awaiting_coupon'] = False
+        return
+    if coupon.get("used_count", 0) >= coupon.get("max_uses", 1):
+        await update.message.reply_text("❌ تم استخدام هذا الكود بالحد الأقصى.")
+        context.user_data['awaiting_coupon'] = False
+        return
+    # تسجيل أن المستخدم سيستخدم الكوبون (نضع pending_action)
+    update_user(uid, {"pending_action": {"type": "coupon", "code": code, "points": coupon["points"]}})
+    await update.message.reply_text(
+        f"🎟️ *كود خصم `{code}`*\nلديك {coupon['points']} نقطة قابلة للسحب في انتظارك.\nشاهد إعلاناً لاستلامها.",
+        parse_mode="Markdown",
+        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("📺 شاهد الإعلان واستلم", web_app=WebAppInfo(url=AD_URL))]])
+    )
+    context.user_data['awaiting_coupon'] = False
+
 # ========== العروض الموقوتة ==========
 def get_active_flash_offer():
     now = datetime.utcnow()
@@ -414,30 +485,21 @@ async def content_menu(update, context):
     ]
     await q.edit_message_text("✍️ *اختر نوع المحتوى:*", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(kb))
 
-
 async def earn_menu(update, context):
     q = update.callback_query
     await q.answer()
     kb = [
-        [
-            InlineKeyboardButton("📺 شاهد إعلان", callback_data="watch_ad"),
-            InlineKeyboardButton("🎲 صندوق الحظ", callback_data="mystery_box")
-        ],
-        [
-            InlineKeyboardButton("🎡 عجلة الحظ", callback_data="wheel"),
-            InlineKeyboardButton("📋 مهام اليوم", callback_data="daily_tasks")
-        ],
-        [
-            InlineKeyboardButton("🎁 دعوة صديق", callback_data="referral_share"),
-            InlineKeyboardButton("⚔️ تحدي صديق", callback_data="challenge_friend")
-        ],
-        [
-            InlineKeyboardButton("🎁 عروض خاصة", callback_data="special_offers"),
-            InlineKeyboardButton("🔙 رجوع", callback_data="main_back")
-        ]
+        [InlineKeyboardButton("📺 شاهد إعلان", callback_data="watch_ad"),
+         InlineKeyboardButton("🎲 صندوق الحظ", callback_data="mystery_box")],
+        [InlineKeyboardButton("🎡 عجلة الحظ", callback_data="wheel"),
+         InlineKeyboardButton("📋 مهام اليوم", callback_data="daily_tasks")],
+        [InlineKeyboardButton("🎁 دعوة صديق", callback_data="referral_share"),
+         InlineKeyboardButton("⚔️ تحدي صديق", callback_data="challenge_friend")],
+        [InlineKeyboardButton("🎟️ كود خصم", callback_data="redeem_coupon"),
+         InlineKeyboardButton("🎁 عروض خاصة", callback_data="special_offers")],
+        [InlineKeyboardButton("🔙 رجوع", callback_data="main_back")]
     ]
     await q.edit_message_text("💰 *كسب النقاط*\nاختر طريقة:", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(kb))
-
 
 async def account_menu(update, context):
     q = update.callback_query
@@ -481,8 +543,8 @@ async def account_menu(update, context):
             f"  • نسبة التحويل: {CONVERSION_RATE}% (100 نقطة عادية → {CONVERSION_RATE} نقطة قابلة للسحب)\n"
             f"  • الحد اليومي: {MAX_DAILY_CONVERSION} نقطة عادية")
     kb = [
-        [InlineKeyboardButton("🔄 تحويل نقاطي", callback_data="convert_points")],
-        [InlineKeyboardButton("💰 سحب النقاط", callback_data="withdraw")],
+        [InlineKeyboardButton("🔄 تحويل نقاطي", callback_data="convert_points"),
+         InlineKeyboardButton("💰 سحب النقاط", callback_data="withdraw")],
         [InlineKeyboardButton("🔙 رجوع", callback_data="main_back")]
     ]
     await q.edit_message_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(kb))
@@ -505,7 +567,8 @@ async def help_callback(update, context):
             f"1️⃣2️⃣ العروض الموقوتة: يعلن الأدمن عن مضاعفات محدودة.\n"
             f"1️⃣3️⃣ مسابقة شهرية: أعلى رصيد يحصل على 50$.\n"
             f"1️⃣4️⃣ تحويل النقاط: حوِّل نقاطك العادية إلى نقابلة للسحب بنسبة {CONVERSION_RATE}% (حد {MAX_DAILY_CONVERSION} نقطة عادية يومياً).\n"
-            f"1️⃣5️⃣ المستويات: تترقى إلى مستويات أعلى عند جمع النقاط ومشاهدة إعلانات محددة. كل مستوى يمنح مضاعفاً أكبر ومكافآت.")
+            f"1️⃣5️⃣ المستويات: تترقى إلى مستويات أعلى عند جمع النقاط ومشاهدة إعلانات محددة. كل مستوى يمنح مضاعفاً أكبر ومكافآت.\n"
+            f"1️⃣6️⃣ كوبونات الخصم: استخدم أكواد خصم للحصول على نقاط إضافية (تتطلب إعلاناً).")
     kb = [[InlineKeyboardButton("🔙 رجوع", callback_data="main_back")]]
     await q.edit_message_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(kb))
 
@@ -845,6 +908,20 @@ async def handle_web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE
                     await update.message.reply_text("🎉 بونص المهام اليومية! +300 نقطة.", parse_mode="Markdown")
                 else:
                     update_user(uid, {"pending_action": None})
+            elif pending["type"] == "coupon":
+                code = pending.get("code")
+                points = pending.get("points")
+                coupon = coupons_col.find_one({"code": code})
+                if coupon and coupon.get("used_count", 0) < coupon.get("max_uses", 1):
+                    # تحديث استخدام الكوبون
+                    coupons_col.update_one({"_id": coupon["_id"]}, {"$inc": {"used_count": 1}})
+                    # إضافة النقاط للمستخدم
+                    new_w2 = u["withdrawable_points"] + points
+                    update_user(uid, {"withdrawable_points": new_w2, "pending_action": None})
+                    await update.message.reply_text(f"🎟️ *تم تفعيل الكوبون!* +{points} نقطة قابلة للسحب.", parse_mode="Markdown")
+                else:
+                    update_user(uid, {"pending_action": None})
+                    await update.message.reply_text("❌ الكوبون غير صالح (انتهت صلاحيته أو تجاوز الحد الأقصى).", parse_mode="Markdown")
 
     elif data == "bonus_ad_watched":
         u = get_user(uid)
@@ -1263,9 +1340,11 @@ def main():
     app = Application.builder().token(TELEGRAM_TOKEN).build()
     # معالج WebApp Data أولاً
     app.add_handler(MessageHandler(filters.StatusUpdate.WEB_APP_DATA, handle_web_app_data))
-    # معالج تحويل النقاط
+    # معالج تحويل النقاط والكوبونات
     app.add_handler(CallbackQueryHandler(convert_points, pattern="^convert_points$"))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, process_conversion))
+    app.add_handler(CallbackQueryHandler(redeem_coupon, pattern="^redeem_coupon$"))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, process_coupon))
     # ConversationHandler
     conv = ConversationHandler(
         entry_points=[CallbackQueryHandler(handle_platform, pattern="^(facebook|instagram|twitter|linkedin|email|ad|article|ideas)$"),
@@ -1285,6 +1364,7 @@ def main():
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("offer", admin_flash_offer))
     app.add_handler(CommandHandler("stopoffer", admin_stop_offer))
+    app.add_handler(CommandHandler("createcoupon", create_coupon))
     app.add_handler(CallbackQueryHandler(content_menu, pattern="^content_menu$"))
     app.add_handler(CallbackQueryHandler(earn_menu, pattern="^earn_menu$"))
     app.add_handler(CallbackQueryHandler(account_menu, pattern="^account_menu$"))
