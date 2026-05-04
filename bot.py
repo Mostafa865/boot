@@ -474,7 +474,6 @@ async def get_weekly_topic(update, context):
     return ConversationHandler.END
 
 # دوال الإعلانات والمكافآت
-async def handle_web_app_data(update, context):
     async def handle_web_app_data(update, context):
     print("🔥🔥🔥 WebApp data received! 🔥🔥🔥")
     data = update.message.web_app_data.data
