@@ -11,7 +11,7 @@
 <script>
 function watchAd() {
     show_10959746().then(() => {
-        // ✅ لما الإعلان يخلص
+        // ✅ بعد انتهاء الإعلان
         if (window.Telegram && Telegram.WebApp) {
             Telegram.WebApp.sendData("ad_watched");
             Telegram.WebApp.close();
