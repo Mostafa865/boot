@@ -91,6 +91,7 @@ def main_menu():
         [InlineKeyboardButton("📺 شاهد إعلان للنقاط", callback_data="watch_ad"),
          InlineKeyboardButton("🎲 صندوق الحظ", callback_data="mystery_box")],
         [InlineKeyboardButton("📋 مهام اليوم", callback_data="daily_tasks")],
+        [InlineKeyboardButton("🏆 المتصدرين", callback_data="leaderboard")],
     ]
     return InlineKeyboardMarkup(keyboard)
 
@@ -624,6 +625,44 @@ async def handle_nav(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=main_menu()
         )
 
+def get_leaderboard(limit=10):
+    """جلب أفضل المستخدمين حسب النقاط من قاعدة البيانات"""
+    cursor = users_col.find({}, {"_id": 1, "points": 1}).sort("points", -1).limit(limit)
+    leaderboard = []
+    rank = 1
+    for user in cursor:
+        leaderboard.append({
+            "rank": rank,
+            "user_id": user["_id"],
+            "points": user.get("points", 0)
+        })
+        rank += 1
+    return leaderboard
+
+async def leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    leaderboard_data = get_leaderboard(10)
+    
+    if not leaderboard_data:
+        text = "🏆 *الترتيب*\n\nلا يوجد مستخدمون بعد. ابدأ باستخدام البوت لتظهر هنا! 🚀"
+    else:
+        text = "🏆 *أفضل 10 مستخدمين*\n\n"
+        for entry in leaderboard_data:
+            user_id = int(entry["user_id"])
+            # حاول جلب اسم المستخدم
+            try:
+                user = await context.bot.get_chat(user_id)
+                name = user.first_name
+            except Exception:
+                name = f"مستخدم {entry['user_id'][-4:]}"
+            
+            text += f"{entry['rank']}. {name} — 💎 {entry['points']} نقطة\n"
+    
+    keyboard = [[InlineKeyboardButton("🏠 القائمة", callback_data="home")]]
+    await query.message.reply_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
+    
 def main():
     app = Application.builder().token(TELEGRAM_TOKEN).build()
 
@@ -655,6 +694,7 @@ def main():
     app.add_handler(CallbackQueryHandler(admin_stats, pattern="^admin_stats$"))
     app.add_handler(CallbackQueryHandler(admin_users, pattern="^admin_users$"))
     app.add_handler(CallbackQueryHandler(handle_nav, pattern="^(home|new|admin_back)$"))
+    app.add_handler(CallbackQueryHandler(leaderboard, pattern="^leaderboard$"))
 
     app.run_polling()
 
