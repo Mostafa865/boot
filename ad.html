@@ -57,12 +57,16 @@
             statusDiv.innerText = "✅ تم! اضغط استلام النقاط";
             tg.MainButton.setText("🎁 استلام النقاط");
             tg.MainButton.show();
-            tg.MainButton.onClick(() => {
-                tg.sendData('ad_watched');
-                tg.MainButton.setText("✅ تم!");
-                setTimeout(() => tg.close(), 500);
-            });
-        }
+           tg.MainButton.onClick(() => {
+           tg.sendData('ad_watched');
+           tg.MainButton.setText("✅ تم!");
+           tg.MainButton.hide();
+           setTimeout(() => {
+        tg.close();
+        // لو مش اشتغل - fallback
+        window.close();
+    }, 800);
+});
     </script>
 </body>
 </html>
