@@ -16,6 +16,16 @@ POINTS_PER_USE = 50
 REFERRAL_POINTS = 500
 AD_URL = "https://mostafa865.github.io/boot/ad.html"
 BOX_AD_URL = "https://mostafa865.github.io/boot/box_ad.html"
+# ========== نظام النقاط المزدوج والتحويل ==========
+POINTS_PER_AD = 100                # لكل إعلان (نقاط قابلة للسحب)
+MAX_ADS_PER_DAY = 10
+REFERRAL_WITHDRAWABLE = 3000       # لكل صديق (نقاط قابلة للسحب)
+POINTS_PER_DOLLAR = 50000
+MIN_WITHDRAW_POINTS = 150000
+STREAK_MAX_MULTIPLIER = 2.0
+STREAK_STEP = 0.05                 # 5% يومياً
+
+
 
 MYSTERY_BOX_PRIZES = [
     (50, "😐 حظك عادي", 50),
@@ -43,14 +53,83 @@ def get_user(user_id):
         user = {
             "_id": uid,
             "points": 300,
+            "withdrawable_points": 0,
             "uses": 0,
             "referrals": 0,
             "tasks": {"ad": False, "used": False, "bonus": False},
             "last_task_date": datetime.utcnow().strftime("%Y-%m-%d"),
-            "last_box_date": ""
+            "last_box_date": "",
+            "ad_watch_today": 0,
+            "last_ad_date": "",
+            "ad_streak": 0,
+            "ad_multiplier": 1.0,
+            "last_ad_streak_date": ""
         }
         users_col.insert_one(user)
+    else:
+        # التأكد من وجود الحقول الجديدة (للمستخدمين القدامى)
+        updated = False
+        if "withdrawable_points" not in user:
+            user["withdrawable_points"] = 0
+            updated = True
+        if "ad_watch_today" not in user:
+            user["ad_watch_today"] = 0
+            updated = True
+        if "last_ad_date" not in user:
+            user["last_ad_date"] = ""
+            updated = True
+        if "ad_streak" not in user:
+            user["ad_streak"] = 0
+            updated = True
+        if "ad_multiplier" not in user:
+            user["ad_multiplier"] = 1.0
+            updated = True
+        if "last_ad_streak_date" not in user:
+            user["last_ad_streak_date"] = ""
+            updated = True
+        if updated:
+            users_col.update_one({"_id": uid}, {"$set": {
+                "withdrawable_points": user["withdrawable_points"],
+                "ad_watch_today": user["ad_watch_today"],
+                "last_ad_date": user["last_ad_date"],
+                "ad_streak": user["ad_streak"],
+                "ad_multiplier": user["ad_multiplier"],
+                "last_ad_streak_date": user["last_ad_streak_date"]
+            }})
     return user
+
+
+def update_ad_streak(user_id, today):
+    """تحديث streak اليومي للمستخدم وإرجاع المضاعف الجديد"""
+    user = get_user(user_id)
+    last_streak_date = user.get("last_ad_streak_date", "")
+    current_streak = user.get("ad_streak", 0)
+    
+    if last_streak_date == today:
+        # شاهد بالفعل اليوم (لا نحدث)
+        return user.get("ad_multiplier", 1.0)
+    
+    yesterday = (datetime.utcnow() - timedelta(days=1)).strftime("%Y-%m-%d")
+    if last_streak_date == yesterday:
+        # يوم متتالي
+        current_streak += 1
+        if current_streak > 20:  # 20 يوم أقصى
+            current_streak = 20
+        new_multiplier = min(STREAK_MAX_MULTIPLIER, 1.0 + (current_streak - 1) * STREAK_STEP)
+        new_multiplier = round(new_multiplier, 2)
+    else:
+        # بدأ streak جديد
+        current_streak = 1
+        new_multiplier = 1.0
+    
+    update_user(user_id, {
+        "ad_streak": current_streak,
+        "ad_multiplier": new_multiplier,
+        "last_ad_streak_date": today
+    })
+    return new_multiplier
+
+
 
 def check_daily_tasks(user):
     today = datetime.utcnow().strftime("%Y-%m-%d")
@@ -120,21 +199,24 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = user.id
     name = user.first_name
 
-    if context.args and context.args[0].startswith("ref_"):
-        ref_id = context.args[0].replace("ref_", "")
-        if ref_id != str(user_id):
-            ref_data = get_user(int(ref_id))
-            new_points = ref_data["points"] + REFERRAL_POINTS
-            update_user(int(ref_id), {"points": new_points, "referrals": ref_data["referrals"] + 1})
-            try:
-                await context.bot.send_message(
-                    int(ref_id),
-                    f"🎉 صديق جديد انضم عن طريقك!\nتم إضافة *{REFERRAL_POINTS} نقطة* لحسابك 💎",
-                    parse_mode="Markdown"
-                )
-            except:
-                pass
-
+   if context.args and context.args[0].startswith("ref_"):
+    ref_id = context.args[0].replace("ref_", "")
+    if ref_id != str(user_id):
+        ref_data = get_user(int(ref_id))
+        new_withdrawable = ref_data["withdrawable_points"] + REFERRAL_WITHDRAWABLE
+        update_user(int(ref_id), {
+            "withdrawable_points": new_withdrawable,
+            "referrals": ref_data["referrals"] + 1
+        })
+        try:
+            await context.bot.send_message(
+                int(ref_id),
+                f"🎉 صديق جديد انضم عن طريقك!\nتم إضافة *{REFERRAL_WITHDRAWABLE} نقطة قابلة للسحب* إلى حسابك 💎",
+                parse_mode="Markdown"
+            )
+        except:
+            pass
+            
     if user_id == ADMIN_ID:
         await update.message.reply_text(
             f"👋 أهلاً *{name}* — لوحة الأدمن 🔧",
@@ -232,20 +314,30 @@ async def my_account(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     user_data = check_daily_tasks(get_user(query.from_user.id))
     update_user(query.from_user.id, {"tasks": user_data["tasks"], "last_task_date": user_data["last_task_date"]})
+    
+    withdrawable = user_data.get("withdrawable_points", 0)
+    streak = user_data.get("ad_streak", 0)
+    multiplier = user_data.get("ad_multiplier", 1.0)
+    
     await query.message.reply_text(
         f"👤 *حسابي*\n\n"
-        f"💎 النقاط: *{user_data['points']} نقطة*\n"
+        f"✨ نقاط عادية (للاستخدام): *{user_data['points']} نقطة*\n"
+        f"💰 نقاط قابلة للسحب: *{withdrawable} نقطة*\n"
         f"✍️ الاستخدامات: *{user_data['uses']} مرة*\n"
-        f"🎁 الدعوات: *{user_data['referrals']} صديق*\n\n"
-        f"كل استخدام بيتخصم {POINTS_PER_USE} نقطة\n"
-        f"شاهد إعلان واكسب {POINTS_PER_AD} نقطة 📺\n"
-        f"دعوة صديق واكسب {REFERRAL_POINTS} نقطة 🎁\n"
-        f"صندوق الحظ يومياً 🎲",
+        f"🎁 الدعوات: *{user_data['referrals']} صديق*\n"
+        f"🔥 Streek: *{streak} يوم* (مضاعف {multiplier}x)\n\n"
+        f"📺 كل إعلان: +{POINTS_PER_AD} نقطة قابلة للسحب × المضاعف (حد {MAX_ADS_PER_DAY}/يوم)\n"
+        f"🎁 كل دعوة: +{REFERRAL_WITHDRAWABLE} نقطة قابلة للسحب\n"
+        f"🎲 صندوق الحظ والمهام: نقاط عادية فقط\n\n"
+        f"💰 التحويل: {POINTS_PER_DOLLAR} نقطة قابلة للسحب = $1\n"
+        f"🏧 الحد الأدنى للسحب: {MIN_WITHDRAW_POINTS} نقطة (${MIN_WITHDRAW_POINTS//POINTS_PER_DOLLAR})",
         parse_mode="Markdown",
         reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("💰 سحب النقاط", callback_data="withdraw")],
             [InlineKeyboardButton("🏠 القائمة", callback_data="home")]
         ])
     )
+
 
 async def referral(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -266,10 +358,38 @@ async def referral(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def watch_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
+    user_id = query.from_user.id
+    user_data = get_user(user_id)
+    today = datetime.utcnow().strftime("%Y-%m-%d")
+    
+    # إعادة ضبط عداد اليوم إذا تغير اليوم
+    if user_data.get("last_ad_date") != today:
+        update_user(user_id, {"ad_watch_today": 0, "last_ad_date": today})
+        user_data["ad_watch_today"] = 0
+    
+    if user_data.get("ad_watch_today", 0) >= MAX_ADS_PER_DAY:
+        await query.message.reply_text(
+            f"📺 *شاهد إعلان*\n\n"
+            f"❌ لقد شاهدت *{MAX_ADS_PER_DAY}* إعلاناً اليوم، الحد الأقصى.\n"
+            "ارجع غداً لمشاهدة المزيد وكسب نقاط قابلة للسحب.",
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🏠 القائمة", callback_data="home")]
+            ])
+        )
+        return
+    
+    # حساب المضاعف الحالي
+    multiplier = update_ad_streak(user_id, today)
+    earn_points = int(POINTS_PER_AD * multiplier)
+    
     await query.message.reply_text(
-        "📺 *شاهد الإعلان عشان تكسب نقاط!*\n\n"
-        "اضغط الزر وشوف الإعلان كامل\n"
-        "النقاط هتتضاف تلقائي بعد المشاهدة ✅",
+        f"📺 *شاهد الإعلان عشان تكسب نقاط قابلة للسحب!*\n\n"
+        f"🔥 مضاعف اليوم: *{multiplier}x*\n"
+        f"💰 ستربح: *{earn_points} نقطة*\n"
+        f"📊 تبقى لك اليوم: *{MAX_ADS_PER_DAY - user_data['ad_watch_today']}* إعلاناً.\n\n"
+        "اضغط الزر وشوف الإعلان كامل.\n"
+        "النقاط هتتضاف تلقائياً بعد المشاهدة ✅",
         parse_mode="Markdown",
         reply_markup=InlineKeyboardMarkup([
             [InlineKeyboardButton("📺 شاهد الإعلان", web_app=WebAppInfo(url=AD_URL))],
@@ -281,23 +401,49 @@ async def handle_web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE
     print(f"📨 WebApp data received: {data}")
     user_id = update.effective_user.id
 
-    if data == "ad_watched":
-        user_data = check_daily_tasks(get_user(user_id))
-        user_data["tasks"]["ad"] = True
-        new_points = user_data["points"] + POINTS_PER_AD
-        update_user(user_id, {
-            "points": new_points,
-            "tasks": user_data["tasks"],
-            "last_task_date": user_data["last_task_date"]
-        })
-        await update.message.reply_text(
-            f"✅ *تم إضافة {POINTS_PER_AD} نقطة!*\n\n"
-            f"💎 رصيدك الحالي: *{new_points} نقطة*",
-            parse_mode="Markdown",
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("🏠 القائمة", callback_data="home")]
-            ])
-        )
+   if data == "ad_watched":
+    user_data = get_user(user_id)
+    today = datetime.utcnow().strftime("%Y-%m-%d")
+    
+    # إعادة ضبط العداد إذا تغير اليوم
+    if user_data.get("last_ad_date") != today:
+        update_user(user_id, {"ad_watch_today": 0, "last_ad_date": today})
+        user_data["ad_watch_today"] = 0
+    
+    # التحقق من الحد الأقصى
+    if user_data.get("ad_watch_today", 0) >= MAX_ADS_PER_DAY:
+        await update.message.reply_text("❌ تجاوزت الحد اليومي للإعلانات.")
+        return
+    
+    # تحديث الـ streak والمضاعف
+    multiplier = update_ad_streak(user_id, today)
+    points_earned = int(POINTS_PER_AD * multiplier)
+    
+    new_withdrawable = user_data["withdrawable_points"] + points_earned
+    new_ad_count = user_data["ad_watch_today"] + 1
+    
+    update_user(user_id, {
+        "withdrawable_points": new_withdrawable,
+        "ad_watch_today": new_ad_count,
+        "last_ad_date": today
+    })
+    
+    # تحديث المهمة اليومية (نقاط عادية)
+    user_data = check_daily_tasks(get_user(user_id))
+    user_data["tasks"]["ad"] = True
+    update_user(user_id, {"tasks": user_data["tasks"]})
+    
+    await update.message.reply_text(
+        f"✅ *تم إضافة {points_earned} نقطة قابلة للسحب!*\n\n"
+        f"💎 رصيدك القابل للسحب: *{new_withdrawable} نقطة*\n"
+        f"🔥 مضاعف اليوم: *{multiplier}x*\n"
+        f"📊 عدد إعلانات اليوم: *{new_ad_count}/{MAX_ADS_PER_DAY}*\n\n"
+        f"✨ رصيدك العادي (للاستخدام): *{user_data['points']} نقطة*",
+        parse_mode="Markdown",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("🏠 القائمة", callback_data="home")]
+        ])
+    )
 
     elif data == "box_ad_watched":
         user_data = get_user(user_id)
@@ -662,7 +808,64 @@ async def leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     keyboard = [[InlineKeyboardButton("🏠 القائمة", callback_data="home")]]
     await query.message.reply_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
+
+
+
+async def withdraw_request(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    user_id = query.from_user.id
+    user_data = get_user(user_id)
+    withdrawable = user_data.get("withdrawable_points", 0)
     
+    if withdrawable < MIN_WITHDRAW_POINTS:
+        need = MIN_WITHDRAW_POINTS - withdrawable
+        await query.message.reply_text(
+            f"💰 *تحويل النقاط لفلوس*\n\n"
+            f"رصيدك القابل للسحب: *{withdrawable} نقطة*\n"
+            f"الحد الأدنى للسحب: *{MIN_WITHDRAW_POINTS} نقطة* (يعني {MIN_WITHDRAW_POINTS//POINTS_PER_DOLLAR}$)\n\n"
+            f"تحتاج *{need} نقطة* إضافية.\n"
+            f"شاهد إعلانات أو ادعو أصدقاء لتجميع نقاط السحب.",
+            parse_mode="Markdown"
+        )
+        return
+    
+    amount_dollars = withdrawable // POINTS_PER_DOLLAR
+    points_to_deduct = amount_dollars * POINTS_PER_DOLLAR
+    new_withdrawable = withdrawable - points_to_deduct
+    update_user(user_id, {"withdrawable_points": new_withdrawable})
+    
+    withdrawal_req = {
+        "user_id": user_id,
+        "points_deducted": points_to_deduct,
+        "amount_usd": amount_dollars,
+        "status": "pending",
+        "date": datetime.utcnow().isoformat()
+    }
+    db["withdrawals"].insert_one(withdrawal_req)
+    
+    await context.bot.send_message(
+        ADMIN_ID,
+        f"💰 *طلب سحب جديد*\n\n"
+        f"المستخدم: {query.from_user.first_name}\nID: `{user_id}`\n"
+        f"المبلغ: {amount_dollars}$\n"
+        f"التاريخ: {datetime.utcnow().strftime('%Y-%m-%d %H:%M')}",
+        parse_mode="Markdown"
+    )
+    
+    await query.message.reply_text(
+        f"💰 *تم إرسال طلب السحب بنجاح!*\n\n"
+        f"المبلغ المطلوب: *{amount_dollars}$*\n"
+        f"تم خصم {points_to_deduct} نقطة من رصيدك القابل للسحب.\n"
+        f"سيتم المراجعة خلال 24-48 ساعة.\n\n"
+        f"شكراً لك!",
+        parse_mode="Markdown",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("🏠 القائمة", callback_data="home")]
+        ])
+    )
+
+
 def main():
     app = Application.builder().token(TELEGRAM_TOKEN).build()
 
@@ -695,6 +898,7 @@ def main():
     app.add_handler(CallbackQueryHandler(admin_users, pattern="^admin_users$"))
     app.add_handler(CallbackQueryHandler(handle_nav, pattern="^(home|new|admin_back)$"))
     app.add_handler(CallbackQueryHandler(leaderboard, pattern="^leaderboard$"))
+    app.add_handler(CallbackQueryHandler(withdraw_request, pattern="^withdraw$"))
 
     app.run_polling()
 
