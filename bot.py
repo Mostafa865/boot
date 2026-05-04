@@ -281,23 +281,34 @@ async def handle_web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE
     user_id = update.effective_user.id
 
     if data == "ad_watched":
-        # ... الكود الموجود بالفعل ...
-        pass
+        user_data = check_daily_tasks(get_user(user_id))
+        user_data["tasks"]["ad"] = True
+        new_points = user_data["points"] + POINTS_PER_AD
+        update_user(user_id, {
+            "points": new_points,
+            "tasks": user_data["tasks"],
+            "last_task_date": user_data["last_task_date"]
+        })
+        await update.message.reply_text(
+            f"✅ *تم إضافة {POINTS_PER_AD} نقطة!*\n\n"
+            f"💎 رصيدك الحالي: *{new_points} نقطة*",
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🏠 القائمة", callback_data="home")]
+            ])
+        )
 
     elif data == "box_ad_watched":
         user_data = get_user(user_id)
         today = datetime.utcnow().strftime("%Y-%m-%d")
 
-        # منع التكرار (أمان إضافي)
         if user_data.get("last_box_date") == today:
             await update.message.reply_text("❌ لقد فتحت الصندوق اليوم بالفعل!")
             return
 
-        # حساب الجائزة العشوائية
         prize_points, prize_msg = spin_mystery_box()
         new_points = user_data["points"] + prize_points
 
-        # تحديث الرصيد وتسجيل التاريخ
         update_user(user_id, {
             "points": new_points,
             "last_box_date": today
