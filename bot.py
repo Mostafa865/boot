@@ -1,4 +1,4 @@
-# v15.0 - البوت الاحترافي الكامل (جميع الميزات + إصلاح JobQueue)
+# v15.1 - النسخة المستقرة (مع إصلاح استقبال بيانات WebApp)
 import logging, random, csv, io, asyncio
 from datetime import datetime, timedelta
 from bson.objectid import ObjectId
@@ -47,7 +47,6 @@ REFERRAL_AD_URL = "https://mostafa865.github.io/boot/referral_ad.html"
 EARLY_AD_URL = "https://mostafa865.github.io/boot/early_ad.html"
 CHALLENGE_AD_URL = "https://mostafa865.github.io/boot/challenge_ad.html"
 MONTHLY_AD_URL = "https://mostafa865.github.io/boot/monthly_ad.html"
-
 
 mongo = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000)
 db = mongo["botdb"]
@@ -317,7 +316,6 @@ async def special_offers(update, context):
     kb = [[InlineKeyboardButton("🔙 رجوع", callback_data="earn_menu")]]
     await q.edit_message_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(kb))
 
-# روابط دعوات مخصصة
 async def referral_share(update, context):
     q = update.callback_query
     await q.answer()
@@ -341,7 +339,6 @@ async def copy_link(update, context):
     link = f"https://t.me/easy_free1bot?start=ref_{q.from_user.id}"
     await q.message.reply_text(f"✅ تم نسخ الرابط:\n`{link}`", parse_mode="Markdown")
 
-# دوال المحتوى (مبسطة)
 def tone_menu():
     kb = [[InlineKeyboardButton("👔 رسمي", callback_data="tone_formal"), InlineKeyboardButton("😄 عامي", callback_data="tone_casual")],
           [InlineKeyboardButton("🔥 تسويقي", callback_data="tone_marketing"), InlineKeyboardButton("💬 مباشر", callback_data="tone_simple")]]
@@ -354,13 +351,12 @@ def admin_menu():
           [InlineKeyboardButton("📁 تصدير Excel", callback_data="admin_export")]]
     return InlineKeyboardMarkup(kb)
 
-# دوال البوت الأساسية
+# ========== دوال البوت الأساسية ==========
 async def start(update, context):
     user = update.effective_user
     uid = user.id
     name = user.first_name
 
-    # معالجة الإحالات
     if context.args and context.args[0].startswith("ref_"):
         ref_id = context.args[0].replace("ref_", "")
         if ref_id != str(uid):
@@ -394,7 +390,7 @@ async def start(update, context):
     else:
         await update.message.reply_text(f"👋 أهلاً *{name}*!\n✨ نقاط عادية: *{u['points']}*\n💰 نقاط قابلة للسحب: *{u.get('withdrawable_points',0)}*\n\n👇 اختر من القائمة:", parse_mode="Markdown", reply_markup=main_menu())
 
-# دوال المحتوى (AI)
+# ========== دوال المحتوى (AI) ==========
 async def handle_platform(update, context):
     q = update.callback_query
     await q.answer()
@@ -466,27 +462,28 @@ async def get_weekly_topic(update, context):
     new_pts = u["points"] - POINTS_PER_USE
     update_user(uid, {"points": new_pts, "uses": u["uses"]+1})
     try:
-        r = client.chat.completions.create(model="gpt-oss-120b", messages=[{"role":"system","content":"كاتب محتوى"},{"role":"user","content":f"7 بوستات تيليجرام عن '{topic}'"}]),
+        r = client.chat.completions.create(model="gpt-oss-120b", messages=[{"role":"system","content":"كاتب محتوى"},{"role":"user","content":f"7 بوستات تيليجرام عن '{topic}'"}])
         content = r.choices[0].message.content
         await update.message.reply_text(f"✅ *بوستات الأسبوع:*\n\n{content}\n💎 رصيدك المتبقي: *{new_pts}*", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏠 الرئيسية", callback_data="main_back")]]))
     except Exception as e:
         await update.message.reply_text(f"❌ خطأ: {str(e)[:100]}", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏠 الرئيسية", callback_data="main_back")]]))
     return ConversationHandler.END
 
-# دوال الإعلانات والمكافآت
-    async def handle_web_app_data(update, context):
+# ========== دوال الإعلانات والمكافآت (المعالج الأساسي لبيانات WebApp) ==========
+async def handle_web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
     print("🔥🔥🔥 WebApp data received! 🔥🔥🔥")
     data = update.message.web_app_data.data
     print(f"Data: {data}")
-    data = update.message.web_app_data.data
     uid = update.effective_user.id
+
     if data == "ad_watched":
         u = get_user(uid)
         today = datetime.utcnow().strftime("%Y-%m-%d")
+        # إعادة ضبط عدد الإعلانات اليومية إذا تغير اليوم
         if u.get("last_ad_date") != today:
             update_user(uid, {"ad_watch_today": 0, "last_ad_date": today})
             u["ad_watch_today"] = 0
-        if u.get("ad_watch_today",0) >= MAX_ADS_PER_DAY:
+        if u.get("ad_watch_today", 0) >= MAX_ADS_PER_DAY:
             await update.message.reply_text(f"❌ الحد اليومي {MAX_ADS_PER_DAY}", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏠 القائمة", callback_data="main_back")]]))
             return
         flash = get_active_flash_offer()
@@ -495,20 +492,19 @@ async def get_weekly_topic(update, context):
         earned = int(POINTS_PER_AD * mul * multiplier)
         new_w = u["withdrawable_points"] + earned
         new_cnt = u["ad_watch_today"] + 1
-        new_total = u.get("total_ads_watched",0) + 1
+        new_total = u.get("total_ads_watched", 0) + 1
         update_user(uid, {"withdrawable_points": new_w, "ad_watch_today": new_cnt, "last_ad_date": today, "total_ads_watched": new_total})
-        if new_total >= 100 and "100 إعلان" not in u.get("badges",[]):
+        if new_total >= 100 and "100 إعلان" not in u.get("badges", []):
             add_badge(uid, "100 إعلان")
             try: await context.bot.send_message(uid, "🏅 شارة 100 إعلان!", parse_mode="Markdown")
             except: pass
-        # تحديث تحدي الأصدقاء
         if u.get("challenge_active"):
-            update_user(uid, {"challenge_points": u.get("challenge_points",0) + earned})
+            update_user(uid, {"challenge_points": u.get("challenge_points", 0) + earned})
         cweek = datetime.utcnow().strftime("%Y-%W")
         if u.get("last_contest_week") != cweek:
             update_user(uid, {"weekly_ad_count": 0, "last_contest_week": cweek, "weekly_mission_claimed": False})
             u["weekly_ad_count"] = 0
-        new_weekly = u.get("weekly_ad_count",0) + 1
+        new_weekly = u.get("weekly_ad_count", 0) + 1
         update_user(uid, {"weekly_ad_count": new_weekly})
         if new_weekly >= WEEKLY_MISSION_TARGET and not u.get("weekly_mission_claimed"):
             update_user(uid, {"withdrawable_points": u["withdrawable_points"] + WEEKLY_MISSION_REWARD, "weekly_mission_claimed": True})
@@ -519,14 +515,13 @@ async def get_weekly_topic(update, context):
                 comm = int(earned * REFERRAL_COMMISSION_PERCENT / 100)
                 if comm > 0 and can_add_commission(rid, comm):
                     ref = get_user(rid)
-                    update_user(rid, {"withdrawable_points": ref["withdrawable_points"] + comm, "total_commission_earned": ref.get("total_commission_earned",0) + comm})
+                    update_user(rid, {"withdrawable_points": ref["withdrawable_points"] + comm, "total_commission_earned": ref.get("total_commission_earned", 0) + comm})
                     try: await context.bot.send_message(rid, f"🎁 عمولة إحالة: +{comm} نقطة!", parse_mode="Markdown")
                     except: pass
         u2 = check_daily_tasks(get_user(uid))
         u2["tasks"]["ad"] = True
         update_user(uid, {"tasks": u2["tasks"]})
         await update.message.reply_text(f"✅ *+{earned} نقطة!*\n💎 رصيدك: *{new_w}*\n🔥 مضاعف: {mul}x\n📊 اليوم: {new_cnt}/{MAX_ADS_PER_DAY}", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏠 القائمة", callback_data="main_back")]]))
-        # معالجة الإجراءات المعلقة
         pending = u.get("pending_action")
         if pending:
             if pending["type"] == "early_bird":
@@ -539,17 +534,14 @@ async def get_weekly_topic(update, context):
                     await update.message.reply_text("🎉 بونص المهام اليومية! +300 نقطة.", parse_mode="Markdown")
                 else:
                     update_user(uid, {"pending_action": None})
-      
-    
+
     elif data == "bonus_ad_watched":
         u = get_user(uid)
         pending = u.get("pending_action")
         if pending and pending.get("type") == "claim_bonus":
             u2 = check_daily_tasks(u)
             if not u2["tasks"].get("bonus", False):
-                new_pts = u2["points"] + 300
-                u2["tasks"]["bonus"] = True
-                update_user(uid, {"points": new_pts, "tasks": u2["tasks"], "pending_action": None})
+                update_user(uid, {"points": u2["points"] + 300, "tasks": {**u2["tasks"], "bonus": True}, "pending_action": None})
                 await update.message.reply_text("🎉 تم إضافة 300 نقطة بونص!", parse_mode="Markdown")
             else:
                 update_user(uid, {"pending_action": None})
@@ -562,8 +554,7 @@ async def get_weekly_topic(update, context):
         pending = u.get("pending_action")
         if pending and pending.get("type") == "referral_reward":
             points = pending.get("points", REFERRAL_WITHDRAWABLE)
-            new_w = u["withdrawable_points"] + points
-            update_user(uid, {"withdrawable_points": new_w, "pending_action": None})
+            update_user(uid, {"withdrawable_points": u["withdrawable_points"] + points, "pending_action": None})
             await update.message.reply_text(f"🎉 تم إضافة {points} نقطة قابلة للسحب (مكافأة إحالة)!", parse_mode="Markdown")
         else:
             await update.message.reply_text("⚠️ لا توجد مكافأة إحالة معلقة.", parse_mode="Markdown")
@@ -573,8 +564,7 @@ async def get_weekly_topic(update, context):
         pending = u.get("pending_action")
         if pending and pending.get("type") == "early_bird":
             points = pending.get("points", EARLY_BIRD_POINTS)
-            new_w = u["withdrawable_points"] + points
-            update_user(uid, {"withdrawable_points": new_w, "early_bird_notified": True, "pending_action": None})
+            update_user(uid, {"withdrawable_points": u["withdrawable_points"] + points, "early_bird_notified": True, "pending_action": None})
             await update.message.reply_text(f"🎉 تم استلام هدية التسجيل المبكر! +{points} نقطة قابلة للسحب.", parse_mode="Markdown")
         else:
             await update.message.reply_text("⚠️ لا توجد هدية معلقة.", parse_mode="Markdown")
@@ -584,8 +574,7 @@ async def get_weekly_topic(update, context):
         pending = u.get("pending_action")
         if pending and pending.get("type") == "challenge_reward":
             points = pending.get("points", 1000)
-            new_w = u["withdrawable_points"] + points
-            update_user(uid, {"withdrawable_points": new_w, "pending_action": None})
+            update_user(uid, {"withdrawable_points": u["withdrawable_points"] + points, "pending_action": None})
             await update.message.reply_text(f"🏆 فزت في التحدي! +{points} نقطة قابلة للسحب.", parse_mode="Markdown")
         else:
             await update.message.reply_text("⚠️ لا توجد جائزة تحدٍ معلقة.", parse_mode="Markdown")
@@ -595,12 +584,10 @@ async def get_weekly_topic(update, context):
         pending = u.get("pending_action")
         if pending and pending.get("type") == "monthly_contest":
             points = pending.get("points", 50 * POINTS_PER_DOLLAR)
-            new_w = u["withdrawable_points"] + points
-            update_user(uid, {"withdrawable_points": new_w, "pending_action": None})
+            update_user(uid, {"withdrawable_points": u["withdrawable_points"] + points, "pending_action": None})
             await update.message.reply_text(f"🏆 فزت في المسابقة الشهرية! +{points} نقطة قابلة للسحب.", parse_mode="Markdown")
         else:
             await update.message.reply_text("⚠️ لا توجد جائزة شهرية معلقة.", parse_mode="Markdown")
-
 
 async def mystery_box(update, context):
     q = update.callback_query
@@ -609,7 +596,7 @@ async def mystery_box(update, context):
     if u.get("last_box_date") == datetime.utcnow().strftime("%Y-%m-%d"):
         await q.message.reply_text("❌ فتحت الصندوق اليوم!", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏠 القائمة", callback_data="main_back")]]))
         return
-    streak = u.get("ad_streak",0)
+    streak = u.get("ad_streak", 0)
     level = "فضة"
     for lvl, data in BOX_LEVELS.items():
         if data["streak_range"][0] <= streak <= data["streak_range"][1]:
@@ -625,7 +612,8 @@ async def watch_ad(update, context):
     today = datetime.utcnow().strftime("%Y-%m-%d")
     if u.get("last_ad_date") != today:
         update_user(uid, {"ad_watch_today": 0, "last_ad_date": today})
-    if u.get("ad_watch_today",0) >= MAX_ADS_PER_DAY:
+        u["ad_watch_today"] = 0
+    if u.get("ad_watch_today", 0) >= MAX_ADS_PER_DAY:
         await q.message.reply_text(f"❌ الحد اليومي {MAX_ADS_PER_DAY}", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏠 القائمة", callback_data="main_back")]]))
         return
     mul = update_ad_streak(uid, today)
@@ -656,7 +644,6 @@ async def claim_bonus(update, context):
     uid = q.from_user.id
     u = check_daily_tasks(get_user(uid))
     if u["tasks"]["ad"] and u["tasks"]["used"] and not u["tasks"]["bonus"]:
-        # تخزين إجراء معلق
         update_user(uid, {"pending_action": {"type": "claim_bonus"}})
         await q.message.reply_text(
             "🎁 *بونص يومي*\nشاهد إعلاناً لاستلام 300 نقطة عادية 👇",
@@ -667,12 +654,12 @@ async def claim_bonus(update, context):
         )
     else:
         await q.message.reply_text("❌ لم تكمل المهام أو استلمت البونص مسبقاً!")
-      
+
 async def withdraw_request(update, context):
     q = update.callback_query
     await q.answer()
     u = get_user(q.from_user.id)
-    w = u.get("withdrawable_points",0)
+    w = u.get("withdrawable_points", 0)
     if w < MIN_WITHDRAW_POINTS:
         need = MIN_WITHDRAW_POINTS - w
         await q.message.reply_text(f"💰 *السحب*\nرصيدك: {w}\nتحتاج {need} نقطة.", parse_mode="Markdown")
@@ -691,13 +678,13 @@ async def withdraw_request(update, context):
     await context.bot.send_message(ADMIN_ID, f"💰 طلب سحب: {q.from_user.first_name} - {amt}$", parse_mode="Markdown")
     await q.message.reply_text(f"💰 تم إرسال طلب {amt}$. سيتم مراجعته.", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏠 القائمة", callback_data="main_back")]]))
 
-# دوال المتصدرين والأدمن
+# ========== دوال المتصدرين والأدمن ==========
 def get_leaderboard(limit=10):
-    cursor = users_col.find({}, {"_id":1,"points":1,"withdrawable_points":1}).sort("points",-1).limit(limit)
+    cursor = users_col.find({}, {"_id": 1, "points": 1, "withdrawable_points": 1}).sort("points", -1).limit(limit)
     res = []
-    for i,u in enumerate(cursor):
-        total = u.get("points",0) + u.get("withdrawable_points",0)
-        res.append({"rank":i+1, "user_id":u["_id"], "total_points":total})
+    for i, u in enumerate(cursor):
+        total = u.get("points", 0) + u.get("withdrawable_points", 0)
+        res.append({"rank": i+1, "user_id": u["_id"], "total_points": total})
     return res
 
 async def leaderboard(update, context):
@@ -721,9 +708,9 @@ async def admin_stats(update, context):
     await q.answer()
     if q.from_user.id != ADMIN_ID: return
     total = users_col.count_documents({})
-    uses = sum(u.get("uses",0) for u in users_col.find())
-    active = sum(1 for u in users_col.find() if u.get("ad_watch_today",0)>0)
-    withdrawn = sum(w.get("amount_usd",0) for w in db["withdrawals"].find({"status":"approved"}))
+    uses = sum(u.get("uses", 0) for u in users_col.find())
+    active = sum(1 for u in users_col.find() if u.get("ad_watch_today", 0) > 0)
+    withdrawn = sum(w.get("amount_usd", 0) for w in db["withdrawals"].find({"status": "approved"}))
     await q.message.reply_text(f"📊 *الإحصائيات*\n👥 المستخدمين: {total}\n📈 نشطاء اليوم: {active}\n✍️ الاستخدامات: {uses}\n💵 المسحوبات: {withdrawn}$", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 رجوع", callback_data="admin_back")]]))
 
 async def admin_users(update, context):
@@ -747,8 +734,9 @@ async def admin_broadcast_send(update, context):
     for user in users_col.find():
         try:
             await context.bot.send_message(int(user["_id"]), f"📢 *رسالة من الإدارة:*\n\n{msg}", parse_mode="Markdown")
-            success+=1
-        except: pass
+            success += 1
+        except:
+            pass
     await update.message.reply_text(f"✅ تم الإرسال لـ {success} مستخدم.")
     return ConversationHandler.END
 
@@ -756,7 +744,7 @@ async def admin_withdrawals(update, context):
     q = update.callback_query
     await q.answer()
     if q.from_user.id != ADMIN_ID: return
-    pending = list(db["withdrawals"].find({"status":"pending"}))
+    pending = list(db["withdrawals"].find({"status": "pending"}))
     if not pending:
         await q.message.reply_text("✅ لا توجد طلبات معلقة.")
         return
@@ -778,13 +766,15 @@ async def approve_withdraw(update, context):
     await q.answer()
     if q.from_user.id != ADMIN_ID: return
     rid = q.data.split("_")[1]
-    withdrawal = db["withdrawals"].find_one({"_id":ObjectId(rid), "status":"pending"})
+    withdrawal = db["withdrawals"].find_one({"_id": ObjectId(rid), "status": "pending"})
     if not withdrawal:
         await q.message.reply_text("الطلب غير موجود.")
         return
-    db["withdrawals"].update_one({"_id":ObjectId(rid)}, {"$set":{"status":"approved"}})
-    try: await context.bot.send_message(withdrawal["user_id"], f"✅ تمت الموافقة على سحب {withdrawal['amount_usd']}$.", parse_mode="Markdown")
-    except: pass
+    db["withdrawals"].update_one({"_id": ObjectId(rid)}, {"$set": {"status": "approved"}})
+    try:
+        await context.bot.send_message(withdrawal["user_id"], f"✅ تمت الموافقة على سحب {withdrawal['amount_usd']}$.", parse_mode="Markdown")
+    except:
+        pass
     await q.message.reply_text(f"✅ تمت الموافقة على سحب {withdrawal['amount_usd']}$.")
     await q.message.delete()
     await admin_withdrawals(update, context)
@@ -794,15 +784,17 @@ async def reject_withdraw(update, context):
     await q.answer()
     if q.from_user.id != ADMIN_ID: return
     rid = q.data.split("_")[1]
-    withdrawal = db["withdrawals"].find_one({"_id":ObjectId(rid), "status":"pending"})
+    withdrawal = db["withdrawals"].find_one({"_id": ObjectId(rid), "status": "pending"})
     if not withdrawal:
         await q.message.reply_text("الطلب غير موجود.")
         return
     u = get_user(withdrawal["user_id"])
-    update_user(withdrawal["user_id"], {"withdrawable_points": u.get("withdrawable_points",0) + withdrawal["points_deducted"]})
-    db["withdrawals"].update_one({"_id":ObjectId(rid)}, {"$set":{"status":"rejected"}})
-    try: await context.bot.send_message(withdrawal["user_id"], f"❌ تم رفض السحب. تم إعادة {withdrawal['points_deducted']} نقطة.", parse_mode="Markdown")
-    except: pass
+    update_user(withdrawal["user_id"], {"withdrawable_points": u.get("withdrawable_points", 0) + withdrawal["points_deducted"]})
+    db["withdrawals"].update_one({"_id": ObjectId(rid)}, {"$set": {"status": "rejected"}})
+    try:
+        await context.bot.send_message(withdrawal["user_id"], f"❌ تم رفض السحب. تم إعادة {withdrawal['points_deducted']} نقطة.", parse_mode="Markdown")
+    except:
+        pass
     await q.message.reply_text(f"❌ تم رفض الطلب وإعادة {withdrawal['points_deducted']} نقطة.")
     await q.message.delete()
     await admin_withdrawals(update, context)
@@ -829,22 +821,21 @@ async def handle_nav(update, context):
     await q.answer()
     if q.data == "admin_back":
         await q.message.reply_text("🔧 لوحة الأدمن:", reply_markup=admin_menu())
-    elif q.data in ("home","new"):
+    elif q.data in ("home", "new"):
         await main_back(update, context)
 
-# ========== المهام المجدولة (باستخدام asyncio sleep لتجنب JobQueue) ==========
+# ========== المهام المجدولة ==========
 async def scheduled_tasks(app):
     while True:
         now = datetime.utcnow()
-        # إشعار يومي الساعة 9 صباحاً
         if now.hour == 9 and now.minute == 0:
             for user in users_col.find():
                 try:
                     uid = int(user["_id"])
                     u = get_user(uid)
                     await app.bot.send_message(uid, f"🔥 *تذكير يومي*\nStreak: {u.get('ad_streak',0)} يوم\nشاهد إعلانك الأول اليوم!", parse_mode="Markdown")
-                except: pass
-        # تقرير يومي الساعة 11 مساءً
+                except:
+                    pass
         if now.hour == 23 and now.minute == 0:
             for user in users_col.find():
                 try:
@@ -853,12 +844,13 @@ async def scheduled_tasks(app):
                     if u.get("last_daily_report_date") != now.strftime("%Y-%m-%d"):
                         await app.bot.send_message(uid, f"📊 *تقرير يومي*\nرصيدك القابل للسحب: {u.get('withdrawable_points',0)}\nإعلانات اليوم السابق: {u.get('ad_watch_today',0)}", parse_mode="Markdown")
                         update_user(uid, {"last_daily_report_date": now.strftime("%Y-%m-%d")})
-                except: pass
-        # إعلان فوز المتصدر الساعة 8 مساءً
+                except:
+                    pass
         if now.hour == 20 and now.minute == 0:
             users = list(users_col.find({}, {"_id":1,"points":1,"withdrawable_points":1}))
             if users:
-                for u in users: u["total"] = u.get("points",0)+u.get("withdrawable_points",0)
+                for u in users:
+                    u["total"] = u.get("points",0) + u.get("withdrawable_points",0)
                 users.sort(key=lambda x: x["total"], reverse=True)
                 top = users[0]
                 try:
@@ -868,8 +860,8 @@ async def scheduled_tasks(app):
                 for user in users_col.find():
                     try:
                         await app.bot.send_message(int(user["_id"]), f"🏆 *فوز اليوم*\nالمتصدر: {name} بـ {top['total']} نقطة!", parse_mode="Markdown")
-                    except: pass
-        # المسابقة الأسبوعية يوم الاثنين الساعة 00:00
+                    except:
+                        pass
         if now.weekday() == 0 and now.hour == 0 and now.minute == 0:
             stats = []
             for user in users_col.find():
@@ -884,9 +876,9 @@ async def scheduled_tasks(app):
                 add_badge(entry["user_id"], "السبوعي")
                 try:
                     await app.bot.send_message(int(entry["user_id"]), f"🏆 المسابقة الأسبوعية: المركز {idx+1} +{prize} نقطة!", parse_mode="Markdown")
-                except: pass
+                except:
+                    pass
             users_col.update_many({}, {"$set": {"weekly_ad_count": 0, "last_contest_week": now.strftime("%Y-%W"), "weekly_mission_claimed": False}})
-        # مسابقة شهرية في أول يوم من الشهر
         if now.day == 1 and now.hour == 0 and now.minute == 0:
             top_user = None
             top_points = 0
@@ -899,8 +891,8 @@ async def scheduled_tasks(app):
                 update_user(top_user, {"pending_action": {"type": "monthly_contest", "points": 50 * POINTS_PER_DOLLAR}})
                 try:
                     await app.bot.send_message(int(top_user), f"🏆 مسابقة الشهر: أعلى رصيد {top_points} نقطة. شاهد إعلاناً لاستلام 50$.", parse_mode="Markdown")
-                except: pass
-        # تحديات الأصدقاء (كل ساعة)
+                except:
+                    pass
         for user in users_col.find({"challenge_active": {"$ne": None}}):
             u = user
             last = u.get("last_challenge_reset")
@@ -914,15 +906,17 @@ async def scheduled_tasks(app):
                     update_user(winner, {"pending_action": {"type": "challenge_reward", "points": 1000}})
                     try:
                         await app.bot.send_message(int(winner), f"🎉 فزت في تحدي الأصدقاء! شاهد إعلاناً لاستلام 1000 نقطة.", parse_mode="Markdown")
-                    except: pass
+                    except:
+                        pass
                 update_user(u["_id"], {"challenge_active": None, "challenge_points": 0, "last_challenge_reset": now.isoformat()})
                 update_user(partner_id, {"challenge_active": None, "challenge_points": 0, "last_challenge_reset": now.isoformat()})
-        await asyncio.sleep(60)  # فحص كل دقيقة
+        await asyncio.sleep(60)
 
 # ========== تشغيل البوت ==========
 def main():
-   app.add_handler(MessageHandler(filters.StatusUpdate.WEB_APP_DATA, handle_web_app_data))
-   app = Application.builder().token(TELEGRAM_TOKEN).build()
+    app = Application.builder().token(TELEGRAM_TOKEN).build()
+    # معالج WebApp Data يجب أن يكون أول معالج
+    app.add_handler(MessageHandler(filters.StatusUpdate.WEB_APP_DATA, handle_web_app_data))
     conv = ConversationHandler(
         entry_points=[CallbackQueryHandler(handle_platform, pattern="^(facebook|instagram|twitter|linkedin|email|ad|article|ideas)$"),
                       CallbackQueryHandler(weekly, pattern="^weekly$"),
@@ -934,11 +928,10 @@ def main():
                 BROADCAST_MSG:[MessageHandler(filters.TEXT & ~filters.COMMAND, admin_broadcast_send)]},
         fallbacks=[CommandHandler("start", start)]
     )
+    app.add_handler(conv)
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("offer", admin_flash_offer))
     app.add_handler(CommandHandler("stopoffer", admin_stop_offer))
-    app.add_handler(conv)
-    app.add_handler(MessageHandler(filters.StatusUpdate.WEB_APP_DATA, handle_web_app_data))
     app.add_handler(CallbackQueryHandler(content_menu, pattern="^content_menu$"))
     app.add_handler(CallbackQueryHandler(earn_menu, pattern="^earn_menu$"))
     app.add_handler(CallbackQueryHandler(account_menu, pattern="^account_menu$"))
@@ -962,7 +955,7 @@ def main():
     app.add_handler(CallbackQueryHandler(leaderboard, pattern="^leaderboard$"))
     app.add_handler(CallbackQueryHandler(withdraw_request, pattern="^withdraw$"))
 
-    # تشغيل المهام المجدولة في الخلفية (بدلاً من JobQueue)
+    # تشغيل المهام المجدولة
     loop = asyncio.get_event_loop()
     loop.create_task(scheduled_tasks(app))
 
