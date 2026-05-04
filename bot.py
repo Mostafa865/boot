@@ -39,8 +39,15 @@ BOX_LEVELS = {
     "ألماس": {"streak_range": (11,100), "prizes": [(500, "🔥 ممتاز", 40), (1000, "🎉 رائع", 35), (2000, "🏆 جاكبوت", 25)]}
 }
 
+# URLs for different ad types (ensure these are correct)
 AD_URL = "https://mostafa865.github.io/boot/ad.html"
 BOX_AD_URL = "https://mostafa865.github.io/boot/box_ad.html"
+BONUS_AD_URL = "https://mostafa865.github.io/boot/bonus_ad.html"
+REFERRAL_AD_URL = "https://mostafa865.github.io/boot/referral_ad.html"
+EARLY_AD_URL = "https://mostafa865.github.io/boot/early_ad.html"
+CHALLENGE_AD_URL = "https://mostafa865.github.io/boot/challenge_ad.html"
+MONTHLY_AD_URL = "https://mostafa865.github.io/boot/monthly_ad.html"
+
 
 mongo = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000)
 db = mongo["botdb"]
@@ -529,16 +536,66 @@ async def handle_web_app_data(update, context):
                     await update.message.reply_text("🎉 بونص المهام اليومية! +300 نقطة.", parse_mode="Markdown")
                 else:
                     update_user(uid, {"pending_action": None})
-    elif data == "box_ad_watched":
+       elif data == "bonus_ad_watched":
         u = get_user(uid)
-        today = datetime.utcnow().strftime("%Y-%m-%d")
-        if u.get("last_box_date") == today:
-            await update.message.reply_text("❌ فتحت الصندوق اليوم!", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏠 القائمة", callback_data="main_back")]]))
-            return
-        prize, msg, level = spin_mystery_box(u.get("ad_streak",0))
-        new_pts = u["points"] + prize
-        update_user(uid, {"points": new_pts, "last_box_date": today})
-        await update.message.reply_text(f"🎁 *صندوق {level}*\n{msg}\n🎊 +{prize} نقطة عادية!\n💎 رصيدك العادي: *{new_pts}*", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏠 القائمة", callback_data="main_back")]]))
+        pending = u.get("pending_action")
+        if pending and pending.get("type") == "claim_bonus":
+            u2 = check_daily_tasks(u)
+            if not u2["tasks"].get("bonus", False):
+                new_pts = u2["points"] + 300
+                u2["tasks"]["bonus"] = True
+                update_user(uid, {"points": new_pts, "tasks": u2["tasks"], "pending_action": None})
+                await update.message.reply_text("🎉 تم إضافة 300 نقطة بونص!", parse_mode="Markdown")
+            else:
+                update_user(uid, {"pending_action": None})
+                await update.message.reply_text("⚠️ تم استلام البونص مسبقاً.", parse_mode="Markdown")
+        else:
+            await update.message.reply_text("⚠️ لا يوجد بونص معلق.", parse_mode="Markdown")
+
+    elif data == "referral_ad_watched":
+        u = get_user(uid)
+        pending = u.get("pending_action")
+        if pending and pending.get("type") == "referral_reward":
+            points = pending.get("points", REFERRAL_WITHDRAWABLE)
+            new_w = u["withdrawable_points"] + points
+            update_user(uid, {"withdrawable_points": new_w, "pending_action": None})
+            await update.message.reply_text(f"🎉 تم إضافة {points} نقطة قابلة للسحب (مكافأة إحالة)!", parse_mode="Markdown")
+        else:
+            await update.message.reply_text("⚠️ لا توجد مكافأة إحالة معلقة.", parse_mode="Markdown")
+
+    elif data == "early_ad_watched":
+        u = get_user(uid)
+        pending = u.get("pending_action")
+        if pending and pending.get("type") == "early_bird":
+            points = pending.get("points", EARLY_BIRD_POINTS)
+            new_w = u["withdrawable_points"] + points
+            update_user(uid, {"withdrawable_points": new_w, "early_bird_notified": True, "pending_action": None})
+            await update.message.reply_text(f"🎉 تم استلام هدية التسجيل المبكر! +{points} نقطة قابلة للسحب.", parse_mode="Markdown")
+        else:
+            await update.message.reply_text("⚠️ لا توجد هدية معلقة.", parse_mode="Markdown")
+
+    elif data == "challenge_ad_watched":
+        u = get_user(uid)
+        pending = u.get("pending_action")
+        if pending and pending.get("type") == "challenge_reward":
+            points = pending.get("points", 1000)
+            new_w = u["withdrawable_points"] + points
+            update_user(uid, {"withdrawable_points": new_w, "pending_action": None})
+            await update.message.reply_text(f"🏆 فزت في التحدي! +{points} نقطة قابلة للسحب.", parse_mode="Markdown")
+        else:
+            await update.message.reply_text("⚠️ لا توجد جائزة تحدٍ معلقة.", parse_mode="Markdown")
+
+    elif data == "monthly_ad_watched":
+        u = get_user(uid)
+        pending = u.get("pending_action")
+        if pending and pending.get("type") == "monthly_contest":
+            points = pending.get("points", 50 * POINTS_PER_DOLLAR)
+            new_w = u["withdrawable_points"] + points
+            update_user(uid, {"withdrawable_points": new_w, "pending_action": None})
+            await update.message.reply_text(f"🏆 فزت في المسابقة الشهرية! +{points} نقطة قابلة للسحب.", parse_mode="Markdown")
+        else:
+            await update.message.reply_text("⚠️ لا توجد جائزة شهرية معلقة.", parse_mode="Markdown")
+
 
 async def mystery_box(update, context):
     q = update.callback_query
@@ -594,11 +651,18 @@ async def claim_bonus(update, context):
     uid = q.from_user.id
     u = check_daily_tasks(get_user(uid))
     if u["tasks"]["ad"] and u["tasks"]["used"] and not u["tasks"]["bonus"]:
+        # تخزين إجراء معلق
         update_user(uid, {"pending_action": {"type": "claim_bonus"}})
-        await q.message.reply_text("🎁 *بونص يومي*\nشاهد إعلاناً لاستلام 300 نقطة 👇", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("📺 شاهد واستلم", web_app=WebAppInfo(url=AD_URL))]]))
+        await q.message.reply_text(
+            "🎁 *بونص يومي*\nشاهد إعلاناً لاستلام 300 نقطة عادية 👇",
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("📺 شاهد الإعلان واستلم البونص", web_app=WebAppInfo(url=BONUS_AD_URL))]
+            ])
+        )
     else:
-        await q.message.reply_text("❌ لم تكمل المهام أو استلمت البونص!", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏠 القائمة", callback_data="main_back")]]))
-
+        await q.message.reply_text("❌ لم تكمل المهام أو استلمت البونص مسبقاً!")
+      
 async def withdraw_request(update, context):
     q = update.callback_query
     await q.answer()
