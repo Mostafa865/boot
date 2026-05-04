@@ -1057,7 +1057,7 @@ async def mystery_box(update, context):
     # صندوق الحظ يستخدم زر ويب آب من نوع Inline لأنه محدد بمكانه
     await q.message.reply_text(f"🎲 *صندوق {level}* 🎲\n🔥 Streak: {streak}\n⚠️ شاهد الإعلان أولاً:", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(f"🎁 افتح صندوق {level}", web_app=WebAppInfo(url=BOX_AD_URL))]]))
 
-async def watch_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def async def watch_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
     uid = q.from_user.id
@@ -1073,17 +1073,29 @@ async def watch_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
     mul = update_ad_streak(uid, today)
     earn = int(POINTS_PER_AD * mul * level_multiplier)
     remaining = MAX_ADS_PER_DAY - u["ad_watch_today"]
-    # استخدام زر لوحة المفاتيح
+
+    # زرار لوحة المفاتيح للموبايل
     web_app_button = KeyboardButton("📺 شاهد الإعلان الآن", web_app=WebAppInfo(url=AD_URL))
     reply_markup = ReplyKeyboardMarkup(
         keyboard=[[web_app_button]],
         resize_keyboard=True,
         one_time_keyboard=True
     )
+
     await q.message.reply_text(
-        f"📺 *شاهد الإعلان*\n🔥 مضاعف Streak: {mul}x\n⭐ مضاعف المستوى: {level_multiplier}x\n💰 ستربح: {earn} نقطة\n📊 تبقى لك: {remaining} إعلان.\n\nاضغط الزر أدناه لمشاهدة الإعلان.",
+        f"📺 *شاهد الإعلان*\n🔥 مضاعف: {mul}x\n⭐ مستوى: {level_multiplier}x\n💰 ستربح: {earn} نقطة\n📊 تبقى: {remaining} إعلان.\n\n"
+        f"📱 *موبايل:* اضغط الزر أسفل الشاشة\n💻 *لاب:* اضغط الزر داخل الرسالة 👇",
         parse_mode="Markdown",
         reply_markup=reply_markup
+    )
+
+    # زرار Inline للاب
+    await q.message.reply_text(
+        "💻 *للاب فقط:*",
+        parse_mode="Markdown",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("📺 شاهد الإعلان (لاب)", web_app=WebAppInfo(url=AD_URL))]
+        ])
     )
 
 async def daily_tasks(update, context):
