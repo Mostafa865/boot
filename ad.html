@@ -1,23 +1,137 @@
 <!DOCTYPE html>
-<html>
+<html lang="ar">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>شاهد إعلان واكسب نقاط</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src='//libtl.com/sdk.js' data-zone='10959746' data-sdk='show_10959746'></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            padding: 20px;
+        }
+        .container {
+            background: rgba(255,255,255,0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 24px;
+            padding: 30px 20px;
+            text-align: center;
+            max-width: 320px;
+            width: 100%;
+            box-shadow: 0 8px 20px rgba(0,0,0,0.3);
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+        h1 {
+            font-size: 28px;
+            margin-bottom: 12px;
+            color: #f4a033;
+        }
+        p {
+            font-size: 16px;
+            color: #ddd;
+            margin-bottom: 25px;
+            line-height: 1.4;
+        }
+        .btn {
+            background: #f4a033;
+            border: none;
+            padding: 14px 24px;
+            border-radius: 50px;
+            font-size: 18px;
+            font-weight: bold;
+            color: #1a1a2e;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            width: 100%;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+        }
+        .btn:active {
+            transform: scale(0.96);
+        }
+        .btn:disabled {
+            background: #444;
+            color: #aaa;
+            cursor: not-allowed;
+            transform: none;
+        }
+        .loader {
+            display: none;
+            margin-top: 15px;
+            font-size: 14px;
+            color: #f4a033;
+        }
+        .error {
+            display: none;
+            margin-top: 15px;
+            color: #ff6b6b;
+            font-size: 13px;
+        }
+    </style>
 </head>
 <body>
-    <button onclick="startAd()">شاهد الإعلان</button>
+    <div class="container">
+        <h1>📺 شاهد الإعلان</h1>
+        <p>شاهد الإعلان كاملاً واكسب <strong>نقاطاً قابلة للسحب</strong> 🎁</p>
+        <button class="btn" id="watchBtn" onclick="startAd()">▶️ شاهد الإعلان الآن</button>
+        <div class="loader" id="loader">⏳ جاري تحميل الإعلان...</div>
+        <div class="error" id="errorMsg">❌ فشل في تحميل الإعلان. حاول مرة أخرى.</div>
+    </div>
+
     <script>
         let tg = window.Telegram.WebApp;
         tg.ready();
-        function startAd() {
-            show_10959746('pop').then(() => {
+        tg.expand();   // توسيع الويب آب لملء الشاشة
+
+        const btn = document.getElementById('watchBtn');
+        const loader = document.getElementById('loader');
+        const errorMsgDiv = document.getElementById('errorMsg');
+
+        function showError() {
+            errorMsgDiv.style.display = 'block';
+            setTimeout(() => { errorMsgDiv.style.display = 'none'; }, 3000);
+        }
+
+        function showLoader() {
+            loader.style.display = 'block';
+        }
+
+        function hideLoader() {
+            loader.style.display = 'none';
+        }
+
+        async function startAd() {
+            btn.disabled = true;
+            showLoader();
+
+            try {
+                // استدعاء إعلان Monetag (تأكد من رقم المنطقة)
+                // يجب أن يكون show_10959746 معرفاً عالمياً (تم تحميله بواسطة SDK)
+                if (typeof show_10959746 !== 'function') {
+                    throw new Error('Monetag SDK not loaded');
+                }
+                // الانتظار حتى يكمل المستخدم مشاهدة الإعلان
+                await show_10959746('pop');
+                
+                // بعد مشاهدة الإعلان بنجاح
                 tg.sendData('ad_watched');
-                tg.close();
-            }).catch((e) => {
-                alert("خطأ: " + e);
-            });
+                tg.close();   // إغلاق الويب آب فوراً
+            } catch (err) {
+                console.error(err);
+                showError();
+                btn.disabled = false;
+                hideLoader();
+            }
         }
     </script>
 </body>
