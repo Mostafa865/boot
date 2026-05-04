@@ -2,103 +2,42 @@
 <html lang="ar">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>شاهد إعلان واكسب نقاط</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src='//libtl.com/sdk.js' data-zone='10959746' data-sdk='show_10959746'></script>
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-            min-height: 100vh;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            font-family: 'Segoe UI', sans-serif;
-            padding: 20px;
-        }
-        .container {
-            background: rgba(255,255,255,0.1);
-            backdrop-filter: blur(10px);
-            border-radius: 24px;
-            padding: 30px 20px;
-            text-align: center;
-            max-width: 320px;
-            width: 100%;
-        }
-        h1 { font-size: 28px; color: #f4a033; margin-bottom: 12px; }
-        p { color: #ddd; margin-bottom: 25px; }
-        .btn {
-            background: #f4a033;
-            border: none;
-            padding: 14px 24px;
-            border-radius: 50px;
-            font-size: 18px;
-            font-weight: bold;
-            color: #1a1a2e;
-            cursor: pointer;
-            width: 100%;
-            margin-top: 10px;
-        }
-        .btn:disabled {
-            background: #444;
-            color: #aaa;
-            cursor: not-allowed;
-        }
-        .loader { display: none; margin-top: 15px; color: #f4a033; }
-        .error { display: none; margin-top: 15px; color: #ff6b6b; }
-        .claim-btn { background: #28a745; display: none; }
+        body { background: #1a1a2e; color: white; font-family: Arial; text-align: center; padding: 20px; }
+        .btn { background: #f4a033; padding: 15px 30px; border-radius: 12px; border: none; font-size: 18px; cursor: pointer; }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1>📺 شاهد الإعلان</h1>
-        <p id="statusText">شاهد الإعلان كاملاً ثم اضغط استلام</p>
-        <button class="btn" id="watchBtn" onclick="startAd()">▶️ شاهد الإعلان</button>
-        <button class="btn claim-btn" id="claimBtn" onclick="claimReward()">🎁 استلام المكافأة</button>
-        <div class="loader" id="loader">⏳ جاري تحميل الإعلان...</div>
-        <div class="error" id="errorMsg">❌ فشل التحميل، حاول مجدداً.</div>
-    </div>
-
+    <h2>📺 شاهد الإعلان</h2>
+    <p>اضغط الزر لتحصل على نقاطك فوراً (يظهر إعلان بعد ذلك)</p>
+    <button class="btn" id="watchBtn">🎁 اضغط لاستلام النقاط ومشاهدة الإعلان</button>
     <script>
         let tg = window.Telegram.WebApp;
         tg.ready();
         tg.expand();
 
-        const watchBtn = document.getElementById('watchBtn');
-        const claimBtn = document.getElementById('claimBtn');
-        const loader = document.getElementById('loader');
-        const errorDiv = document.getElementById('errorMsg');
-        const statusText = document.getElementById('statusText');
-
-        function showLoader() { loader.style.display = 'block'; }
-        function hideLoader() { loader.style.display = 'none'; }
-        function showError() { errorDiv.style.display = 'block'; setTimeout(() => errorDiv.style.display = 'none', 3000); }
-
-        async function startAd() {
-            watchBtn.disabled = true;
-            showLoader();
-            try {
-                if (typeof show_10959746 !== 'function') throw new Error('SDK not loaded');
-                await show_10959746('pop');
-                // بعد انتهاء الإعلان، نخفي زر المشاهدة ونظهر زر الاستلام
-                watchBtn.style.display = 'none';
-                claimBtn.style.display = 'block';
-                statusText.innerText = '✅ تم مشاهدة الإعلان! اضغط استلام للمكافأة.';
-                hideLoader();
-            } catch (err) {
-                console.error(err);
-                showError();
-                watchBtn.disabled = false;
-                hideLoader();
-            }
-        }
-
-        function claimReward() {
-            // إرسال الإشارة للبوت ثم إغلاق الويب آب
+        const btn = document.getElementById('watchBtn');
+        btn.onclick = () => {
+            // 1. أولاً نرسل إشارة 'ad_watched' إلى البوت (تمنح النقاط فوراً)
             tg.sendData('ad_watched');
-            setTimeout(() => { tg.close(); }, 300);
-        }
+            // 2. نعطي المستخدم رسالة أنه تم إضافة النقاط
+            btn.disabled = true;
+            btn.innerText = '✅ تم إضافة نقاطك! جاري فتح الإعلان...';
+            // 3. بعد نصف ثانية نعرض الإعلان (حتى يشاهد المستخدم شيئاً)
+            setTimeout(() => {
+                if (typeof show_10959746 === 'function') {
+                    show_10959746('pop').catch(e => console.error);
+                } else {
+                    alert('خطأ في تحميل الإعلان، لكن النقاط أضيفت.');
+                }
+                // نغلق الويب آب بعد عرض الإعلان بثواني (اختياري)
+                setTimeout(() => tg.close(), 8000);
+            }, 500);
+        };
     </script>
 </body>
 </html>
