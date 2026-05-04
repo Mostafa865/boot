@@ -2,25 +2,80 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>🎁 شاهد الإعلان واكسب نقاط</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <!-- استبدل YOUR_BLOCK_ID بالمعرف الذي ستحصل عليه من AdsGram -->
-    <script src="https://adsgram.ai/js/adsgram.min.js" data-block-id="YOUR_BLOCK_ID"></script>
-    <style> ... </style>
+    <script src="https://sad.adsgram.ai/js/sad.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); min-height: 100vh; display: flex; justify-content: center; align-items: center; font-family: 'Segoe UI', sans-serif; padding: 20px; }
+        .container { background: rgba(255,255,255,0.1); border-radius: 24px; padding: 30px 20px; text-align: center; max-width: 320px; width: 100%; border: 1px solid rgba(255,255,255,0.2); }
+        h1 { color: #f4a033; margin-bottom: 12px; }
+        p { color: #ddd; margin-bottom: 25px; line-height: 1.4; }
+        .btn { background: #f4a033; border: none; padding: 14px 24px; border-radius: 50px; font-size: 18px; font-weight: bold; color: #1a1a2e; cursor: pointer; width: 100%; margin-top: 10px; transition: 0.2s; }
+        .btn:disabled { background: #444; color: #aaa; cursor: not-allowed; }
+        .hidden { display: none; }
+        .status { margin-top: 20px; font-size: 14px; color: #ccc; }
+    </style>
 </head>
 <body>
-    <button onclick="startAd()">📺 شاهد الإعلان</button>
+    <div class="container">
+        <h1>📺 إعلان فيديو</h1>
+        <div id="step1">
+            <p>شاهد الفيديو للنهاية باستمرارك 💪<br>هتاخد نقاطك فوراً بعد ما تخلص</p>
+            <button class="btn" id="watchBtn" onclick="startAd()">▶️ شاهد الإعلان</button>
+        </div>
+        <div id="step2" class="hidden">
+            <p>✅ تم مشاهدة الإعلان بنجاح!</p>
+            <p>اضغط "استلام" عشان النقاط تتصافى في حسابك.</p>
+            <button class="btn" id="claimBtn" onclick="claimReward()">🎁 استلام المكافأة</button>
+        </div>
+        <div class="status" id="statusMsg"></div>
+    </div>
+
     <script>
         let tg = window.Telegram.WebApp;
         tg.ready();
+        tg.expand();
+
+        let AdController = null;
+        const statusDiv = document.getElementById('statusMsg');
+
         async function startAd() {
+            const btn = document.getElementById('watchBtn');
+            btn.disabled = true;
+            statusDiv.innerText = "⏳ جاري تحميل الإعلان...";
+
             try {
-                const result = await window.Adsgram.showRewardedVideo();
-                if (result.done) {
-                    tg.sendData('ad_watched'); // ✅ عايز تمنح النقاط هنا
-                    tg.close();
+                if (!AdController) {
+                    // ✅ هنا حط رقم الـ blockId بتاعك
+                    AdController = window.Adsgram.init({ blockId: "29423" });
                 }
-            } catch (e) { alert("فشل تحميل الإعلان: " + e.message); }
+                const result = await AdController.show();
+                if (result && result.done) {
+                    statusDiv.innerText = "✅ تم مشاهدة الإعلان!";
+                    document.getElementById('step1').classList.add('hidden');
+                    document.getElementById('step2').classList.remove('hidden');
+                } else {
+                    statusDiv.innerText = "⚠️ لم يتم مشاهدة الإعلان بالكامل. حاول مرة أخرى.";
+                    btn.disabled = false;
+                }
+            } catch (e) {
+                statusDiv.innerText = "❌ فشل تحميل الإعلان: " + (e.message || "خطأ غير معروف");
+                btn.disabled = false;
+            }
+        }
+
+        function claimReward() {
+            statusDiv.innerText = "📤 جاري إرسال البيانات...";
+            const claimBtn = document.getElementById('claimBtn');
+            claimBtn.disabled = true;
+            
+            // ✅ هنا بنبعت الإشارة للبوت بعد مشاهدة الإعلان
+            tg.sendData('ad_watched');
+            
+            // ندي وقت صغير عشان الإشارة توصل ونقفل الويب اب تلقائي بعدها
+            setTimeout(() => { tg.close(); }, 500);
         }
     </script>
 </body>
