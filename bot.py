@@ -1,8 +1,8 @@
-# v18.1 - البوت المتكامل مع نظام الكوبونات (إصلاح إضافة النقاط)
+# v19.0 - النسخة النهائية مع زر لوحة المفاتيح (ReplyKeyboardMarkup) لإصلاح WebApp على الهواتف
 import logging, random, csv, io, asyncio
 from datetime import datetime, timedelta
 from bson.objectid import ObjectId
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import (Application, CommandHandler, MessageHandler, CallbackQueryHandler,
                           filters, ContextTypes, ConversationHandler)
 from pymongo import MongoClient
@@ -307,6 +307,7 @@ def spin_wheel():
     return random.choice(WHEEL_PRIZES)
 
 async def wheel_of_fortune(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # هذه الدالة تُستدعى من زر القائمة، لكنها ستظهر زر لوحة المفاتيح
     query = update.callback_query
     await query.answer()
     uid = query.from_user.id
@@ -322,12 +323,20 @@ async def wheel_of_fortune(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 رجوع", callback_data="earn_menu")]])
         )
         return
+    # وضع إجراء معلق
     update_user(uid, {"pending_action": {"type": "wheel"}})
+    # إظهار زر لوحة المفاتيح
+    web_app_button = KeyboardButton("🎡 شاهد الإعلان واستدير", web_app=WebAppInfo(url=WHEEL_URL))
+    reply_markup = ReplyKeyboardMarkup(
+        keyboard=[[web_app_button]],
+        resize_keyboard=True,
+        one_time_keyboard=True
+    )
     await query.message.reply_text(
         f"🎡 *عجلة الحظ* (المتبقي اليوم: {WHEEL_DAILY_LIMIT - spins_today})\n\n"
-        f"شاهد إعلاناً لتدوير العجلة وكسب نقاط تصل إلى 2000 نقطة قابلة للسحب!",
+        f"اضغط الزر أدناه لمشاهدة الإعلان ثم استلام نقاطك.",
         parse_mode="Markdown",
-        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🎡 شاهد الإعلان واستدير", web_app=WebAppInfo(url=WHEEL_URL))]])
+        reply_markup=reply_markup
     )
 
 # ========== نظام الكوبونات ==========
@@ -394,10 +403,16 @@ async def process_coupon(update: Update, context: ContextTypes.DEFAULT_TYPE):
     update_user(uid, {"pending_action": {"type": "coupon", "code": code, "points": coupon["points"]}})
     print(f"✅ Coupon pending action set for user {uid}: {coupon['points']} points")
 
+    web_app_button = KeyboardButton("📺 شاهد الإعلان واستلم الكوبون", web_app=WebAppInfo(url=AD_URL))
+    reply_markup = ReplyKeyboardMarkup(
+        keyboard=[[web_app_button]],
+        resize_keyboard=True,
+        one_time_keyboard=True
+    )
     await update.message.reply_text(
-        f"🎟️ *كود خصم `{code}`*\nلديك {coupon['points']} نقطة قابلة للسحب في انتظارك.\nشاهد إعلاناً لاستلامها.",
+        f"🎟️ *كود خصم `{code}`*\nلديك {coupon['points']} نقطة قابلة للسحب في انتظارك.\nاضغط الزر أدناه لمشاهدة الإعلان.",
         parse_mode="Markdown",
-        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("📺 شاهد الإعلان واستلم", web_app=WebAppInfo(url=AD_URL))]])
+        reply_markup=reply_markup
     )
     context.user_data['awaiting_coupon'] = False
 
@@ -747,9 +762,22 @@ async def start(update, context):
     u = get_user(uid)
     if u.get("early_bird_rewarded") and not u.get("early_bird_notified") and not u.get("pending_action"):
         update_user(uid, {"pending_action": {"type": "early_bird", "points": EARLY_BIRD_POINTS}})
-        await update.message.reply_text(f"🎉 *أنت من أوائل المستخدمين!* لديك {EARLY_BIRD_POINTS} نقطة.\nشاهد إعلاناً لاستلامها 👇", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🎁 استلام", web_app=WebAppInfo(url=AD_URL))]]))
+        web_app_button = KeyboardButton("🎁 استلام الهدية", web_app=WebAppInfo(url=EARLY_AD_URL))
+        reply_markup = ReplyKeyboardMarkup(
+            keyboard=[[web_app_button]],
+            resize_keyboard=True,
+            one_time_keyboard=True
+        )
+        await update.message.reply_text(
+            f"🎉 *أنت من أوائل المستخدمين!* لديك {EARLY_BIRD_POINTS} نقطة.\nاضغط الزر أدناه لمشاهدة إعلان واستلام الهدية.",
+            parse_mode="Markdown",
+            reply_markup=reply_markup
+        )
     else:
-        await update.message.reply_text(f"👋 أهلاً *{name}*!\n✨ نقاط عادية: *{u['points']}*\n💰 نقاط قابلة للسحب: *{u.get('withdrawable_points',0)}*\n\n👇 اختر من القائمة:", parse_mode="Markdown", reply_markup=main_menu())
+        await update.message.reply_text(
+            f"👋 أهلاً *{name}*!\n✨ نقاط عادية: *{u['points']}*\n💰 نقاط قابلة للسحب: *{u.get('withdrawable_points',0)}*\n\n👇 اختر من القائمة:",
+            parse_mode="Markdown", reply_markup=main_menu()
+        )
 
 # ========== دوال المحتوى (AI) ==========
 async def handle_platform(update, context):
@@ -830,9 +858,9 @@ async def get_weekly_topic(update, context):
         await update.message.reply_text(f"❌ خطأ: {str(e)[:100]}", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏠 الرئيسية", callback_data="main_back")]]))
     return ConversationHandler.END
 
-# ========== دوال الإعلانات والمكافآت (المعالج الرئيسي) ==========
+# ========== دوال الإعلانات والمكافآت ==========
 async def handle_web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    print("🔥🔥🔥 WebApp data received! 🔥🔥🔥")
+    print("🔥 WebApp data received!")
     data = update.message.web_app_data.data
     print(f"Data: {data}")
     uid = update.effective_user.id
@@ -886,7 +914,7 @@ async def handle_web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE
         u2 = check_daily_tasks(get_user(uid))
         u2["tasks"]["ad"] = True
         update_user(uid, {"tasks": u2["tasks"]})
-        reduced = reduce_pending_level_ads(uid)
+        reduce_pending_level_ads(uid)
         upgrade_result = check_and_process_level_upgrade(uid)
         upgrade_msg = ""
         if upgrade_result:
@@ -896,7 +924,7 @@ async def handle_web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE
             parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏠 القائمة", callback_data="main_back")]])
         )
         pending = u.get("pending_action")
-        print(f"🔍 Pending action after ad: {pending}")
+        print(f"Pending action after ad: {pending}")
         if pending:
             if pending["type"] == "early_bird":
                 update_user(uid, {"withdrawable_points": u["withdrawable_points"] + pending["points"], "early_bird_notified": True, "pending_action": None})
@@ -912,7 +940,7 @@ async def handle_web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE
                 code = pending.get("code")
                 points = pending.get("points")
                 coupon = coupons_col.find_one({"code": code})
-                print(f"🎫 Coupon found: {coupon is not None}, used_count={coupon.get('used_count') if coupon else 0}")
+                print(f"Coupon found: {coupon is not None}, used_count={coupon.get('used_count') if coupon else 0}")
                 if coupon and coupon.get("used_count", 0) < coupon.get("max_uses", 1):
                     coupons_col.update_one({"_id": coupon["_id"]}, {"$inc": {"used_count": 1}})
                     new_withdrawable = u["withdrawable_points"] + points
@@ -1026,9 +1054,10 @@ async def mystery_box(update, context):
         if data["streak_range"][0] <= streak <= data["streak_range"][1]:
             level = lvl
             break
+    # صندوق الحظ يستخدم زر ويب آب من نوع Inline لأنه محدد بمكانه
     await q.message.reply_text(f"🎲 *صندوق {level}* 🎲\n🔥 Streak: {streak}\n⚠️ شاهد الإعلان أولاً:", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(f"🎁 افتح صندوق {level}", web_app=WebAppInfo(url=BOX_AD_URL))]]))
 
-async def watch_ad(update, context):
+async def watch_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
     uid = q.from_user.id
@@ -1044,9 +1073,17 @@ async def watch_ad(update, context):
     mul = update_ad_streak(uid, today)
     earn = int(POINTS_PER_AD * mul * level_multiplier)
     remaining = MAX_ADS_PER_DAY - u["ad_watch_today"]
+    # استخدام زر لوحة المفاتيح
+    web_app_button = KeyboardButton("📺 شاهد الإعلان الآن", web_app=WebAppInfo(url=AD_URL))
+    reply_markup = ReplyKeyboardMarkup(
+        keyboard=[[web_app_button]],
+        resize_keyboard=True,
+        one_time_keyboard=True
+    )
     await q.message.reply_text(
-        f"📺 *شاهد الإعلان*\n🔥 مضاعف Streak: {mul}x\n⭐ مضاعف المستوى: {level_multiplier}x\n💰 ستربح: {earn} نقطة\n📊 تبقى لك: {remaining} إعلان.",
-        parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("📺 شاهد", web_app=WebAppInfo(url=AD_URL))]])
+        f"📺 *شاهد الإعلان*\n🔥 مضاعف Streak: {mul}x\n⭐ مضاعف المستوى: {level_multiplier}x\n💰 ستربح: {earn} نقطة\n📊 تبقى لك: {remaining} إعلان.\n\nاضغط الزر أدناه لمشاهدة الإعلان.",
+        parse_mode="Markdown",
+        reply_markup=reply_markup
     )
 
 async def daily_tasks(update, context):
@@ -1073,12 +1110,16 @@ async def claim_bonus(update, context):
     u = check_daily_tasks(get_user(uid))
     if u["tasks"]["ad"] and u["tasks"]["used"] and not u["tasks"]["bonus"]:
         update_user(uid, {"pending_action": {"type": "claim_bonus"}})
+        web_app_button = KeyboardButton("📺 شاهد الإعلان واستلم البونص", web_app=WebAppInfo(url=BONUS_AD_URL))
+        reply_markup = ReplyKeyboardMarkup(
+            keyboard=[[web_app_button]],
+            resize_keyboard=True,
+            one_time_keyboard=True
+        )
         await q.message.reply_text(
-            "🎁 *بونص يومي*\nشاهد إعلاناً لاستلام 300 نقطة عادية 👇",
+            "🎁 *بونص يومي*\nلديك 300 نقطة عادية في انتظارك.\nاضغط الزر أدناه لمشاهدة الإعلان.",
             parse_mode="Markdown",
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("📺 شاهد الإعلان واستلم البونص", web_app=WebAppInfo(url=BONUS_AD_URL))]
-            ])
+            reply_markup=reply_markup
         )
     else:
         await q.message.reply_text("❌ لم تكمل المهام أو استلمت البونص مسبقاً!")
@@ -1340,18 +1381,6 @@ async def scheduled_tasks(app):
                 update_user(partner_id, {"challenge_active": None, "challenge_points": 0, "last_challenge_reset": now.isoformat()})
         await asyncio.sleep(60)
 
-
-async def test_command(update, context):
-    await update.message.reply_text("✅ تم استلام الأمر بنجاح! يمكنك الآن جمع نقاط تجريبية (محاكاة).")
-    uid = update.effective_user.id
-    u = get_user(uid)
-    new_w = u.get("withdrawable_points", 0) + 50
-    update_user(uid, {"withdrawable_points": new_w})
-    await update.message.reply_text(f"💰 تم إضافة 50 نقطة تجريبية. رصيدك الآن: {new_w}")
-
-
-
-
 # ========== تشغيل البوت ==========
 def main():
     app = Application.builder().token(TELEGRAM_TOKEN).build()
@@ -1405,7 +1434,6 @@ def main():
     app.add_handler(CallbackQueryHandler(handle_nav, pattern="^(home|new|admin_back)$"))
     app.add_handler(CallbackQueryHandler(leaderboard, pattern="^leaderboard$"))
     app.add_handler(CallbackQueryHandler(withdraw_request, pattern="^withdraw$"))
-    app.add_handler(CommandHandler("test", test_command))
 
     # المهام المجدولة
     loop = asyncio.get_event_loop()
