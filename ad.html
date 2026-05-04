@@ -1,28 +1,30 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <script src='//whephiwums.com/sdk.js' data-zone='10959746' data-sdk='show_10959746'></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src='//whephiwums.com/sdk.js' data-zone='10959746' data-sdk='show_10959746'></script>
 </head>
-<body style="text-align:center; padding-top:50px; font-family:sans-serif;">
+<body style="text-align:center; padding-top:50px;">
+    <button onclick="startAd()">📺 شاهد الإعلان المكافأ</button>
+    <script>
+        let tg = window.Telegram.WebApp;
+        tg.ready();
+        tg.expand();
 
-<h2>📺 شاهد الإعلان وخد نقاط</h2>
-<button onclick="watchAd()" style="padding:15px 30px; font-size:18px;">▶️ مشاهدة الإعلان</button>
-
-<script>
-function watchAd() {
-    show_10959746().then(() => {
-        // ✅ بعد انتهاء الإعلان
-        if (window.Telegram && Telegram.WebApp) {
-            Telegram.WebApp.sendData("ad_watched");
-            Telegram.WebApp.close();
-        } else {
-            alert("Ad watched, but not inside Telegram");
+        async function startAd() {
+            try {
+                // عرض الإعلان المكافأ (بدون 'pop')
+                await show_10959746();
+                // بعد إكمال الإعلان بنجاح
+                tg.sendData('ad_watched');
+                // إغلاق الويب آب بعد إرسال الإشارة
+                setTimeout(() => tg.close(), 500);
+            } catch (e) {
+                alert("فشل تحميل الإعلان: " + e);
+            }
         }
-    }).catch(() => {
-        alert("❌ لازم تكمل الإعلان للنهاية");
-    });
-}
-</script>
-
+    </script>
 </body>
 </html>
