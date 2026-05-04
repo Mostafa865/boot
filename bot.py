@@ -277,6 +277,7 @@ async def watch_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def handle_web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = update.message.web_app_data.data
+    print(f"📨 WebApp data received: {data}")
     user_id = update.effective_user.id
 
     if data == "ad_watched":
