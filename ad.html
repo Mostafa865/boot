@@ -24,11 +24,11 @@
             btn.disabled = true;
             btn.innerText = '⏳ جاري تحميل الإعلان...';
 
-            // استدعاء إعلان Monetag
+            // استدعاء إعلان Monetag (data-zone=10959746)
             show_10959746('pop').then(() => {
                 // بعد مشاهدة الإعلان نرسل إشارة للبوت
                 tg.sendData('ad_watched');
-                tg.close();  // يقفل الويب اب تلقائياً
+                tg.close();
             }).catch((err) => {
                 console.error(err);
                 alert('حدث خطأ، حاول مرة أخرى');
