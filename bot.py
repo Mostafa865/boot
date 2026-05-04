@@ -181,6 +181,7 @@ def admin_menu():
     keyboard = [
         [InlineKeyboardButton("👥 المستخدمون", callback_data="admin_users"),
          InlineKeyboardButton("📊 الإحصائيات", callback_data="admin_stats")],
+        [InlineKeyboardButton("💰 طلبات السحب", callback_data="admin_withdrawals")],  # جديد
         [InlineKeyboardButton("📢 رسالة جماعية", callback_data="admin_broadcast")],
     ]
     return InlineKeyboardMarkup(keyboard)
@@ -848,6 +849,146 @@ async def withdraw_request(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ])
     )
 
+
+
+
+async def admin_withdrawals(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    if query.from_user.id != ADMIN_ID:
+        return
+    
+    # جلب الطلبات المعلقة
+    pending_requests = list(db["withdrawals"].find({"status": "pending"}))
+    if not pending_requests:
+        await query.message.reply_text("✅ لا توجد طلبات سحب معلقة حالياً.")
+        return
+    
+    text = "💰 *طلبات السحب المعلقة*\n\n"
+    keyboard = []
+    for req in pending_requests:
+        user_id = req["user_id"]
+        amount = req["amount_usd"]
+        points = req["points_deducted"]
+        req_id = str(req["_id"])
+        # جلب اسم المستخدم إن أمكن
+        try:
+            user = await context.bot.get_chat(user_id)
+            name = user.first_name
+        except:
+            name = f"ID: {user_id}"
+        text += f"👤 {name}\n💵 {amount}$ ({points} نقطة)\n\n"
+        keyboard.append([
+            InlineKeyboardButton(f"✅ قبول {amount}$", callback_data=f"approve_{req_id}"),
+            InlineKeyboardButton(f"❌ رفض", callback_data=f"reject_{req_id}")
+        ])
+    
+    # إضافة زر الرجوع
+    keyboard.append([InlineKeyboardButton("🔙 رجوع", callback_data="admin_back")])
+    
+    await query.message.reply_text(
+        text,
+        parse_mode="Markdown",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+
+
+
+
+async def approve_withdraw(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    if query.from_user.id != ADMIN_ID:
+        await query.answer("❌ غير مصرح", show_alert=True)
+        return
+    
+    req_id = query.data.split("_")[1]
+    # استخدام ObjectId من bson
+    from bson.objectid import ObjectId
+    withdrawal = db["withdrawals"].find_one({"_id": ObjectId(req_id), "status": "pending"})
+    if not withdrawal:
+        await query.message.reply_text("❌ هذا الطلب غير موجود أو تمت معالجته مسبقاً.")
+        return
+    
+    # تحديث الحالة إلى "approved"
+    db["withdrawals"].update_one({"_id": ObjectId(req_id)}, {"$set": {"status": "approved"}})
+    
+    user_id = withdrawal["user_id"]
+    amount = withdrawal["amount_usd"]
+    
+    # إرسال إشعار للمستخدم
+    try:
+        await context.bot.send_message(
+            user_id,
+            f"✅ *تمت الموافقة على طلب السحب الخاص بك!*\n\n"
+            f"المبلغ: *{amount}$*\n"
+            f"سيتم تحويل المبلغ إلى حسابك خلال 24 ساعة.\n"
+            f"شكراً لاستخدامك البوت.",
+            parse_mode="Markdown"
+        )
+    except:
+        pass
+    
+    await query.message.reply_text(f"✅ تمت الموافقة على سحب {amount}$ وإشعار المستخدم.")
+    # تحديث رسالة الأدمن (إزالة الأزرار)
+    await query.message.delete()
+    # يمكن إعادة عرض قائمة الطلبات المعلقة
+    await admin_withdrawals(update, context)
+
+
+
+
+
+
+async def reject_withdraw(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    if query.from_user.id != ADMIN_ID:
+        await query.answer("❌ غير مصرح", show_alert=True)
+        return
+    
+    req_id = query.data.split("_")[1]
+    from bson.objectid import ObjectId
+    withdrawal = db["withdrawals"].find_one({"_id": ObjectId(req_id), "status": "pending"})
+    if not withdrawal:
+        await query.message.reply_text("❌ هذا الطلب غير موجود أو تمت معالجته مسبقاً.")
+        return
+    
+    # إعادة النقاط المحجوزة للمستخدم
+    user_id = withdrawal["user_id"]
+    points_back = withdrawal["points_deducted"]
+    user_data = get_user(user_id)
+    new_withdrawable = user_data.get("withdrawable_points", 0) + points_back
+    update_user(user_id, {"withdrawable_points": new_withdrawable})
+    
+    # تحديث حالة الطلب إلى "rejected"
+    db["withdrawals"].update_one({"_id": ObjectId(req_id)}, {"$set": {"status": "rejected"}})
+    
+    # إشعار المستخدم
+    try:
+        await context.bot.send_message(
+            user_id,
+            f"❌ *للأسف، تم رفض طلب السحب الخاص بك.*\n\n"
+            f"السبب: لم يتم استيفاء الشروط أو خطأ في البيانات.\n"
+            f"تم إعادة *{points_back} نقطة* إلى رصيدك القابل للسحب.\n"
+            f"يمكنك التقدم بطلب جديد في وقت لاحق.",
+            parse_mode="Markdown"
+        )
+    except:
+        pass
+    
+    await query.message.reply_text(f"❌ تم رفض الطلب وإعادة {points_back} نقطة للمستخدم.")
+    await query.message.delete()
+    await admin_withdrawals(update, context)
+
+
+
+
+
+
+
+
+
 # ========== تشغيل البوت ==========
 def main():
     app = Application.builder().token(TELEGRAM_TOKEN).build()
@@ -882,6 +1023,9 @@ def main():
     app.add_handler(CallbackQueryHandler(handle_nav, pattern="^(home|new|admin_back)$"))
     app.add_handler(CallbackQueryHandler(leaderboard, pattern="^leaderboard$"))
     app.add_handler(CallbackQueryHandler(withdraw_request, pattern="^withdraw$"))
+    app.add_handler(CallbackQueryHandler(admin_withdrawals, pattern="^admin_withdrawals$"))
+    app.add_handler(CallbackQueryHandler(approve_withdraw, pattern="^approve_"))
+    app.add_handler(CallbackQueryHandler(reject_withdraw, pattern="^reject_"))
 
     app.run_polling()
 
