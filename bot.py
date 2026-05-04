@@ -1340,6 +1340,18 @@ async def scheduled_tasks(app):
                 update_user(partner_id, {"challenge_active": None, "challenge_points": 0, "last_challenge_reset": now.isoformat()})
         await asyncio.sleep(60)
 
+
+async def test_command(update, context):
+    await update.message.reply_text("✅ تم استلام الأمر بنجاح! يمكنك الآن جمع نقاط تجريبية (محاكاة).")
+    uid = update.effective_user.id
+    u = get_user(uid)
+    new_w = u.get("withdrawable_points", 0) + 50
+    update_user(uid, {"withdrawable_points": new_w})
+    await update.message.reply_text(f"💰 تم إضافة 50 نقطة تجريبية. رصيدك الآن: {new_w}")
+
+
+
+
 # ========== تشغيل البوت ==========
 def main():
     app = Application.builder().token(TELEGRAM_TOKEN).build()
@@ -1393,6 +1405,7 @@ def main():
     app.add_handler(CallbackQueryHandler(handle_nav, pattern="^(home|new|admin_back)$"))
     app.add_handler(CallbackQueryHandler(leaderboard, pattern="^leaderboard$"))
     app.add_handler(CallbackQueryHandler(withdraw_request, pattern="^withdraw$"))
+    app.add_handler(CommandHandler("test", test_command))
 
     # المهام المجدولة
     loop = asyncio.get_event_loop()
