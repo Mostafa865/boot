@@ -3,187 +3,44 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>شاهد الإعلان واكسب نقاط</title>
-    <!-- AdsGram SDK -->
-    <script src="https://sad.adsgram.ai/js/sad.min.js"></script>
-    <!-- Telegram WebApp SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src='//libtl.com/sdk.js' data-zone='10959746' data-sdk='show_10959746'></script>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        body {
-            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-            min-height: 100vh;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            padding: 20px;
-        }
-        .container {
-            background: rgba(255,255,255,0.1);
-            backdrop-filter: blur(10px);
-            border-radius: 24px;
-            padding: 30px 20px;
-            text-align: center;
-            max-width: 350px;
-            width: 100%;
-            border: 1px solid rgba(255,255,255,0.2);
-        }
-        h1 {
-            font-size: 28px;
-            margin-bottom: 12px;
-            color: #f4a033;
-        }
-        p {
-            font-size: 16px;
-            color: #ddd;
-            margin-bottom: 25px;
-            line-height: 1.4;
-        }
-        .btn {
-            background: #f4a033;
-            border: none;
-            padding: 14px 24px;
-            border-radius: 50px;
-            font-size: 18px;
-            font-weight: bold;
-            color: #1a1a2e;
-            cursor: pointer;
-            width: 100%;
-            transition: all 0.3s ease;
-            margin-top: 10px;
-        }
-        .btn:disabled {
-            background: #444;
-            color: #aaa;
-            cursor: not-allowed;
-            transform: none;
-        }
-        .hidden {
-            display: none;
-        }
-        .status {
-            margin-top: 15px;
-            font-size: 14px;
-            color: #ccc;
-        }
-        .error {
-            color: #ff6b6b;
-            margin-top: 15px;
-            font-size: 13px;
-        }
+        body { background: #1a1a2e; color: white; font-family: Arial; text-align: center; padding: 20px; }
+        .btn { background: #f4a033; padding: 15px 30px; border-radius: 12px; border: none; font-size: 18px; cursor: pointer; }
     </style>
 </head>
 <body>
-    <div class="container" id="mainContainer">
-        <h1>📺 إعلان فيديو</h1>
-        <div id="step1">
-            <p>شاهد الفيديو للنهاية للحصول على نقاطك</p>
-            <button class="btn" id="watchBtn">🎬 شاهد الإعلان</button>
-        </div>
-        <div id="step2" class="hidden">
-            <p>✅ تم مشاهدة الإعلان بنجاح!</p>
-            <p>اضغط الزر أدناه لاستلام النقاط.</p>
-            <button class="btn" id="claimBtn">🎁 استلام المكافأة</button>
-        </div>
-        <div class="status" id="statusMsg"></div>
-        <div class="error" id="errorMsg"></div>
-    </div>
+    <h2>📺 شاهد الإعلان</h2>
+    <button class="btn" id="watchBtn">🎬 تشغيل الإعلان</button>
+    <div id="status"></div>
 
     <script>
-        // تهيئة Telegram WebApp
-        const tg = window.Telegram.WebApp;
+        let tg = window.Telegram.WebApp;
         tg.ready();
         tg.expand();
 
-        // عناصر DOM
-        const step1 = document.getElementById('step1');
-        const step2 = document.getElementById('step2');
-        const watchBtn = document.getElementById('watchBtn');
-        const claimBtn = document.getElementById('claimBtn');
-        const statusDiv = document.getElementById('statusMsg');
-        const errorDiv = document.getElementById('errorMsg');
+        const btn = document.getElementById('watchBtn');
+        const statusDiv = document.getElementById('status');
 
-        // استبدل هذا الرقم بـ Block ID الخاص بك من AdsGram
-        const BLOCK_ID = "29423";
-
-        // متغير تحكم الإعلان
-        let adController = null;
-
-        // دالة لإظهار الأخطاء
-        function showError(msg) {
-            errorDiv.innerText = msg;
-            errorDiv.style.display = 'block';
-            setTimeout(() => { errorDiv.style.display = 'none'; }, 5000);
-        }
-
-        // دالة لتهيئة AdsGram
-        function initAdsGram() {
-            if (adController) return adController;
-            try {
-                adController = window.Adsgram.init({
-                    blockId: BLOCK_ID,
-                    debug: true,           // للتجربة – أظهر تفاصيل في console
-                    debugConsole: true
-                });
-                console.log("✅ AdsGram initialized with blockId:", BLOCK_ID);
-                statusDiv.innerText = "جاهز لبدء الإعلان";
-                return adController;
-            } catch (e) {
-                console.error("❌ AdsGram init error:", e);
-                showError("خطأ في تهيئة الإعلان: " + e.message);
-                return null;
-            }
-        }
-
-        // عند الضغط على زر "شاهد الإعلان"
-        watchBtn.onclick = async () => {
-            watchBtn.disabled = true;
+        btn.onclick = async () => {
+            btn.disabled = true;
             statusDiv.innerText = "⏳ جاري تحميل الإعلان...";
-
-            const controller = initAdsGram();
-            if (!controller) {
-                watchBtn.disabled = false;
-                statusDiv.innerText = "⚠️ لا يمكن تحميل الإعلان. حاول مرة أخرى.";
-                return;
-            }
-
             try {
-                // عرض الإعلان المكافأ وانتظار النتيجة
-                const result = await controller.show();
-                console.log("🎉 Ad result:", result);
-                if (result && result.done) {
-                    // تم مشاهدة الإعلان بنجاح
-                    statusDiv.innerText = "✅ تم مشاهدة الإعلان!";
-                    step1.classList.add('hidden');
-                    step2.classList.remove('hidden');
-                } else {
-                    // لم يكمل المستخدم المشاهدة أو حدث خطأ
-                    statusDiv.innerText = "⚠️ لم يتم مشاهدة الإعلان بالكامل. حاول مجدداً.";
-                    watchBtn.disabled = false;
-                }
-            } catch (err) {
-                console.error("❌ Ad error:", err);
-                statusDiv.innerText = "❌ فشل تحميل الإعلان: " + (err.message || "خطأ غير معروف");
-                showError("فشل تحميل الإعلان. تأكد من اتصالك بالإنترنت وحاول لاحقاً.");
-                watchBtn.disabled = false;
+                await show_10959746();   // انتظار انتهاء الإعلان
+                statusDiv.innerText = "✅ تم مشاهدة الإعلان! اضغط الزر أدناه.";
+                // ظهور زر كبير أسفل الشاشة
+                tg.MainButton.setText("🎁 استلام النقاط");
+                tg.MainButton.show();
+                tg.MainButton.onClick(() => {
+                    tg.sendData('ad_watched');
+                    tg.MainButton.setText("✅ تم الإرسال");
+                    setTimeout(() => tg.close(), 500);
+                });
+            } catch(e) {
+                statusDiv.innerText = "❌ فشل الإعلان. حاول مجدداً.";
+                btn.disabled = false;
             }
-        };
-
-        // زر استلام المكافأة بعد الإعلان
-        claimBtn.onclick = () => {
-            statusDiv.innerText = "📤 جاري إضافة النقاط...";
-            claimBtn.disabled = true;
-            // إرسال الإشارة للبوت
-            tg.sendData('ad_watched');
-            // انتظار نصف ثانية ثم إغلاق الويب آب
-            setTimeout(() => {
-                tg.close();
-            }, 500);
         };
     </script>
 </body>
