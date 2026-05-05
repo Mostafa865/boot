@@ -1109,25 +1109,23 @@ async def get_weekly_topic(update, context):
 async def handle_web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
     print("🔥 WebApp data received!")
     data = update.message.web_app_data.data
-    context.user_data['last_ad_time'] = context.user_data.get('last_ad_time', 0)
     print(f"Data: {data}")
     uid = update.effective_user.id
 
-          if data == "ad_watched":
+    # فحص السرعة: تخزين آخر وقت إعلان في user_data (ذاكرة مؤقتة)
+    last_ad = context.user_data.get('last_ad_time', 0)
+    now = datetime.utcnow().timestamp()
+    if now - last_ad < 10:
+        await update.message.reply_text("⚠️ يرجى الانتظار 10 ثوانٍ بين الإعلانات")
+        return
+    context.user_data['last_ad_time'] = now
+
+    if data == "ad_watched":
         u = get_user(uid)
         if u.get("banned", False):
             await update.message.reply_text("⛔ أنت محظور.")
             return
-        
-        # فحص السرعة
-        now_ts = datetime.utcnow().timestamp()
-        if now_ts - context.user_data['last_ad_time'] < 10:
-            await update.message.reply_text("⚠️ انتظر 10 ثوانٍ بين الإعلانات.")
-            return
-        context.user_data['last_ad_time'] = now_ts
-
-        today = datetime.utcnow().strftime("%Y-%m-%d")  # باقي الكود...
-            
+        today = datetime.utcnow().strftime("%Y-%m-%d")
         if u.get("last_ad_date") != today:
             update_user(uid, {"ad_watch_today": 0, "last_ad_date": today})
             u["ad_watch_today"] = 0
@@ -1210,8 +1208,7 @@ async def handle_web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE
                     await update.message.reply_text(f"🎟️ *تم تفعيل الكود بنجاح!* +{points} نقطة قابلة للسحب.", parse_mode="Markdown")
                 else:
                     update_user(uid, {"pending_action": None})
-                    await update.message.reply_text("❌ الكوبون غير صالح.", parse_mode="Markdown")
-
+                    await update.message.reply_text("❌ الكوبون غير صالح (انتهت صلاحيته أو تجاوز الحد الأقصى).", parse_mode="Markdown")
 
     elif data == "bonus_ad_watched":
         u = get_user(uid)
@@ -1303,10 +1300,12 @@ async def handle_web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE
             new_w = u["withdrawable_points"] + prize
             new_spins = spins_today + 1
             update_user(uid, {"withdrawable_points": new_w, "wheel_spins_today": new_spins, "last_wheel_date": today, "pending_action": None})
-            await update.message.reply_text(f"🎡 *عجلة الحظ* 🎡\nلقد ربحت *{prize} نقطة قابلة للسحب*!\n💰 رصيدك القابل للسحب الآن: *{new_w}*\n📊 متبقي اليوم: {WHEEL_DAILY_LIMIT - new_spins} من {WHEEL_DAILY_LIMIT}", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏠 القائمة", callback_data="main_back")]]))
+            await update.message.reply_text(
+                f"🎡 *عجلة الحظ* 🎡\nلقد ربحت *{prize} نقطة قابلة للسحب*!\n💰 رصيدك القابل للسحب الآن: *{new_w}*\n📊 متبقي اليوم: {WHEEL_DAILY_LIMIT - new_spins} من {WHEEL_DAILY_LIMIT}",
+                parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏠 القائمة", callback_data="main_back")]])
+            )
         else:
             await update.message.reply_text("⚠️ لا يوجد طلب عجلة حظ معلق.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏠 القائمة", callback_data="main_back")]]))
-
 async def mystery_box(update, context):
     q = update.callback_query
     await q.answer()
