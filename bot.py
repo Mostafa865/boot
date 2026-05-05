@@ -1404,9 +1404,48 @@ async def withdraw_request(update: Update, context: ContextTypes.DEFAULT_TYPE):
         need = MIN_WITHDRAW_POINTS - w
         await q.message.reply_text(f"💰 *السحب*\nرصيدك القابل للسحب: {w} نقطة\nتحتاج {need} نقطة إضافية للحد الأدنى ({MIN_WITHDRAW_POINTS} نقطة).", parse_mode="Markdown")
         return
-    # نطلب من المستخدم كتابة طريقة الدفع وتفاصيله
-    await q.message.reply_text("📝 *طلب سحب جديد*\n\nأرسل الآن طريقة الدفع وتفاصيلك على سطر واحد بالشكل التالي:\n\n`Vodafone Cash, 01012345678`\nأو `InstaPay, user@instapay.com`\nأو `Bank Transfer, IBAN: ...`\n\nسيتم خصم النقاط فوراً وإرسال طلب للمراجعة.", parse_mode="Markdown")
-    context.user_data['awaiting_withdraw_details'] = True
+    max_usd = w // POINTS_PER_DOLLAR
+    await q.message.reply_text(
+        f"💵 *كم تريد سحب؟*\nالحد الأدنى: `3` دولار\nالحد الأقصى المتاح: `{max_usd}` دولار\n\nأرسل المبلغ (رقم فقط):",
+        parse_mode="Markdown"
+    )
+    context.user_data['awaiting_withdraw_amount'] = True
+
+
+
+async def withdraw_amount(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.user_data.get('awaiting_withdraw_amount'):
+        return
+    uid = update.effective_user.id
+    user = get_user(uid)
+    if user.get("banned", False):
+        await update.message.reply_text("⛔ أنت محظور.")
+        context.user_data.pop('awaiting_withdraw_amount', None)
+        return
+    try:
+        amount_usd = float(update.message.text.strip())
+        if amount_usd < 3:
+            await update.message.reply_text("❌ الحد الأدنى للسحب هو 3 دولار.")
+            return
+        # تحويل من دولار إلى نقاط
+        required_points = int(amount_usd * POINTS_PER_DOLLAR)
+        w = user.get("withdrawable_points", 0)
+        if required_points > w:
+            await update.message.reply_text(f"❌ رصيدك لا يكفي. تحتاج {required_points} نقطة، لكن لديك {w} نقطة فقط.")
+            return
+        # تخزين المبلغ المطلوب في user_data مؤقتاً
+        context.user_data['withdraw_amount_usd'] = amount_usd
+        context.user_data['awaiting_withdraw_amount'] = False
+        context.user_data['awaiting_withdraw_details'] = True
+        await update.message.reply_text(
+            "📝 *تفاصيل الدفع*\nأرسل الآن طريقة الدفع ومعلوماتك (مثال: `Vodafone Cash, 01012345678`):",
+            parse_mode="Markdown"
+        )
+    except ValueError:
+        await update.message.reply_text("❌ يرجى إدخال رقم صحيح (مثال: 5).")
+
+
+
 
 async def withdraw_get_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
@@ -1790,9 +1829,10 @@ async def handle_all_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await process_coupon(update, context)
     elif context.user_data.get('awaiting_challenge'):
         await challenge_target(update, context)
+    elif context.user_data.get('awaiting_withdraw_amount'):
+        await withdraw_amount(update, context)
     elif context.user_data.get('awaiting_withdraw_details'):
         await withdraw_details(update, context)
-
 
 
 import aiohttp
@@ -1910,6 +1950,13 @@ async def withdraw_details(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if user.get("banned", False):
         await update.message.reply_text("⛔ أنت محظور.")
         context.user_data.pop('awaiting_withdraw_details', None)
+        context.user_data.pop('withdraw_amount_usd', None)
+        return
+
+    amount_usd = context.user_data.get('withdraw_amount_usd')
+    if not amount_usd:
+        await update.message.reply_text("❌ حدث خطأ: لم يتم تحديد المبلغ. ابدأ من جديد.")
+        context.user_data.clear()
         return
 
     details = update.message.text.strip()
@@ -1917,37 +1964,40 @@ async def withdraw_details(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ يرجى إدخال تفاصيل صحيحة (طريقة الدفع والمعلومات).")
         return
 
+    required_points = int(amount_usd * POINTS_PER_DOLLAR)
     w = user.get("withdrawable_points", 0)
-    if w < MIN_WITHDRAW_POINTS:
-        await update.message.reply_text("❌ لم يعد رصيدك كافياً للسحب (تغير الرصيد أثناء الإدخال).")
+    if required_points > w:
+        await update.message.reply_text("❌ رصيدك لم يعد كافياً (تغير أثناء الإدخال).")
         context.user_data.pop('awaiting_withdraw_details', None)
+        context.user_data.pop('withdraw_amount_usd', None)
         return
 
-    amt = w // POINTS_PER_DOLLAR
-    deduct = amt * POINTS_PER_DOLLAR
-    new_w = w - deduct
+    # الخصم
+    new_w = w - required_points
     update_user(uid, {"withdrawable_points": new_w})
 
-    # حفظ الطلب مع التفاصيل
+    # حفظ الطلب
     req = {
         "user_id": uid,
-        "points_deducted": deduct,
-        "amount_usd": amt,
+        "points_deducted": required_points,
+        "amount_usd": amount_usd,
         "payment_details": details,
         "status": "pending",
         "date": datetime.utcnow()
     }
     withdrawals_col.insert_one(req)
-    await log_action(uid, "طلب سحب يدوي", uid, f"{amt}$ - {details}")
+    await log_action(uid, "طلب سحب يدوي (مبلغ محدد)", uid, f"{amount_usd}$ - {details}")
 
-    # إرسال إشعار للأدمن
+    # إشعار للأدمن
     await context.bot.send_message(
         ADMIN_ID,
-        f"💰 *طلب سحب جديد*\n👤 المستخدم: {update.effective_user.first_name} (ID: `{uid}`)\n💵 المبلغ: {amt}$\n📝 التفاصيل: {details}\n📅 الوقت: {datetime.utcnow().strftime('%Y-%m-%d %H:%M')}\n\nاستخدم `/approve_{ObjectId()}` أو `/reject_{ObjectId()}` (يجب استبدال المعرف لاحقاً).",
+        f"💰 *طلب سحب جديد*\n👤 المستخدم: {update.effective_user.first_name} (ID: `{uid}`)\n💵 المبلغ: {amount_usd}$\n📝 التفاصيل: {details}\n📅 الوقت: {datetime.utcnow().strftime('%Y-%m-%d %H:%M')}",
         parse_mode="Markdown"
     )
-    await update.message.reply_text(f"✅ تم طلب سحب {amt}$ بنجاح.\nسيتم مراجعة طلبك وإرسال المبلغ خلال 48 ساعة.", parse_mode="Markdown")
+    await update.message.reply_text(f"✅ تم طلب سحب {amount_usd}$ بنجاح.\nسيتم مراجعة طلبك وإرسال المبلغ خلال 48 ساعة.", parse_mode="Markdown")
+    # تنظيف البيانات المؤقتة
     context.user_data.pop('awaiting_withdraw_details', None)
+    context.user_data.pop('withdraw_amount_usd', None)
 
 
 
