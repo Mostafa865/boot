@@ -793,23 +793,33 @@ async def admin_unban(update: Update, context: ContextTypes.DEFAULT_TYPE):
             pass
     except Exception as e:
         await update.message.reply_text(f"❌ خطأ: استخدم `/unban <user_id>`\n{str(e)}")
+      
 
 async def admin_list_banned(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ADMIN_ID:
-        await update.message.reply_text("⛔ غير مصرح.")
+    query = update.callback_query
+    await query.answer()
+    if query.from_user.id != ADMIN_ID:
+        await query.answer("⛔ غير مصرح.", show_alert=True)
         return
-    banned_users = users_col.find({"banned": True})
-    banned_list = []
+
+    banned_users = list(users_col.find({"banned": True}))
+    if not banned_users:
+        await query.message.reply_text("✅ لا يوجد مستخدمون محظورون حالياً.")
+        return
+
+    text = "🚫 *قائمة المحظورين*\n\n"
     for user in banned_users:
+        uid = user["_id"]
+        # نحاول جلب الاسم، وإذا فشل نضع الـ ID فقط
         try:
-            name = (await context.bot.get_chat(int(user["_id"]))).first_name
-        except:
-            name = f"ID:{user['_id']}"
-        banned_list.append(f"• {name} (`{user['_id']}`)")
-    if not banned_list:
-        await update.message.reply_text("✅ لا يوجد مستخدمون محظورون.")
-        return
-    await update.message.reply_text("🚫 *قائمة المستخدمين المحظورين:*\n\n" + "\n".join(banned_list), parse_mode="Markdown")
+            chat = await context.bot.get_chat(int(uid))
+            name = chat.first_name
+        except Exception:
+            name = f"مستخدم ({uid})"
+        text += f"• {name}\n   🆔 `{uid}`\n\n"
+
+    await query.message.reply_text(text, parse_mode="Markdown")
+
 
 async def admin_user_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
