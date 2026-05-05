@@ -1112,24 +1112,21 @@ async def handle_web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE
     print(f"Data: {data}")
     uid = update.effective_user.id
 
-    if data == "ad_watched":
+       if data == "ad_watched":
         u = get_user(uid)
         if u.get("banned", False):
             await update.message.reply_text("⛔ أنت محظور.")
             return
 
-          
-        # فحص السرعة
+        # فحص السرعة باستخدام قاعدة البيانات (يمنع تكرار الإعلانات خلال 10 ثوانٍ)
         now_ts = datetime.utcnow().timestamp()
         last_ad_ts = u.get("last_ad_time", 0)
         if now_ts - last_ad_ts < 10:
-            await update.message.reply_text("⚠️ انتظر 10 ثوانٍ بين الإعلانات")
-            await log_cheat(uid, "speed_violation", f"فرق {now_ts - last_ad_ts:.1f} ثانية")
+            await update.message.reply_text("⚠️ انتظر 10 ثوانٍ بين الإعلانات.")
             return
+        # تحديث آخر وقت إعلان
         update_user(uid, {"last_ad_time": now_ts})
 
-      
-      
         today = datetime.utcnow().strftime("%Y-%m-%d")
         if u.get("last_ad_date") != today:
             update_user(uid, {"ad_watch_today": 0, "last_ad_date": today})
@@ -1172,10 +1169,8 @@ async def handle_web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE
                 if comm > 0 and can_add_commission(rid, comm):
                     ref = get_user(rid)
                     update_user(rid, {"withdrawable_points": ref["withdrawable_points"] + comm, "total_commission_earned": ref.get("total_commission_earned", 0) + comm})
-                    try:
-                        await context.bot.send_message(rid, f"🎁 عمولة إحالة: +{comm} نقطة!", parse_mode="Markdown")
-                    except:
-                        pass
+                    try: await context.bot.send_message(rid, f"🎁 عمولة إحالة: +{comm} نقطة!", parse_mode="Markdown")
+                    except: pass
         challenge = await get_active_global_challenge()
         if challenge:
             global_challenges_col.update_one({"_id": challenge["_id"]}, {"$inc": {"current_ads": 1}})
@@ -1188,9 +1183,11 @@ async def handle_web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE
         upgrade_msg = ""
         if upgrade_result:
             upgrade_msg = f"\n\n🎉 *تهانينا! لقد تم ترقيتك إلى مستوى {upgrade_result['new_level']}!* 🎉\n✅ مكافأة +{upgrade_result['reward']} نقطة قابلة للسحب."
-        await update.message.reply_text(f"✅ *+{earned} نقطة!*\n💎 رصيدك: *{new_w}*\n🔥 مضاعف: {mul}x\n📊 اليوم: {new_cnt}/{MAX_ADS_PER_DAY}{upgrade_msg}", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏠 القائمة", callback_data="main_back")]]))
+        await update.message.reply_text(
+            f"✅ *+{earned} نقطة!*\n💎 رصيدك: *{new_w}*\n🔥 مضاعف: {mul}x\n📊 اليوم: {new_cnt}/{MAX_ADS_PER_DAY}{upgrade_msg}",
+            parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏠 القائمة", callback_data="main_back")]])
+        )
         pending = u.get("pending_action")
-        print(f"Pending action after ad: {pending}")
         if pending:
             if pending["type"] == "early_bird":
                 update_user(uid, {"withdrawable_points": u["withdrawable_points"] + pending["points"], "early_bird_notified": True, "pending_action": None})
@@ -1213,7 +1210,8 @@ async def handle_web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE
                     await update.message.reply_text(f"🎟️ *تم تفعيل الكود بنجاح!* +{points} نقطة قابلة للسحب.", parse_mode="Markdown")
                 else:
                     update_user(uid, {"pending_action": None})
-                    await update.message.reply_text("❌ الكوبون غير صالح (انتهت صلاحيته أو تجاوز الحد الأقصى).", parse_mode="Markdown")
+                    await update.message.reply_text("❌ الكوبون غير صالح.", parse_mode="Markdown")
+
 
     elif data == "bonus_ad_watched":
         u = get_user(uid)
