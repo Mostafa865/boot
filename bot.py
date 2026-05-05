@@ -45,6 +45,9 @@ MAX_ADS_PER_HOUR = 30           # الحد الأقصى للإعلانات في 
 SUSPICIOUS_THRESHOLD = 3        # عدد مرات السلوك المشبوه قبل التحذير
 AUTO_BAN_THRESHOLD = 5          # بعدها يحظر تلقائياً
 CHEAT_LOG_COLLECTION = "cheat_logs"
+# إعدادات أتمتة السحب
+AUTO_WITHDRAWAL_ENABLED = True
+USDT_ADDRESS_REGEX = r'^T[a-zA-Z0-9]{33}$'  # عنوان TRC20 بسيط
 
 LEVELS = {
     "مبتدئ": {"points": 0, "unlock_ads": 0, "reward": 0, "multiplier": 1.0},
@@ -115,7 +118,7 @@ def get_user(user_id):
             "has_withdrawn_before": False, "first_withdrawal_date": None,
             "tasks": {"ad": False, "used": False, "bonus": False}, "last_task_date": today,
             "last_box_date": "", "ad_watch_today": 0, "last_ad_date": "", "ad_streak": 0,
-            "last_ad_time": 0,
+            "last_ad_time": 0, "usdt_address": None, "usdt_verified": False,
             "ad_multiplier": 1.0, "last_ad_streak_date": "", "weekly_ad_count": 0,
             "last_contest_week": datetime.utcnow().strftime("%Y-%W"), "weekly_mission_claimed": False,
             "ambassador_badge": False, "last_daily_report_date": "", "total_ads_watched": 0,
@@ -533,6 +536,8 @@ async def account_menu(update, context):
             f"💰 التحويل: {POINTS_PER_DOLLAR} نقطة = $1\n🏧 حد السحب: {MIN_WITHDRAW_POINTS} نقطة (${MIN_WITHDRAW_POINTS//POINTS_PER_DOLLAR})\n\n"
             f"🔄 تحويل النقاط العادية إلى قابلة للسحب:\n  • نسبة التحويل: {CONVERSION_RATE}% (100 نقطة عادية → {CONVERSION_RATE} نقطة قابلة للسحب)\n  • الحد اليومي: {MAX_DAILY_CONVERSION} نقطة عادية")
     kb = [[InlineKeyboardButton("🔄 تحويل نقاطي", callback_data="convert_points"), InlineKeyboardButton("💰 سحب النقاط", callback_data="withdraw")],
+          [InlineKeyboardButton("🔗 ربط محفظة USDT", callback_data="set_wallet_btn"),
+           InlineKeyboardButton("💰 سحب تلقائي", callback_data="auto_withdraw")],
           [InlineKeyboardButton("🔙 رجوع", callback_data="main_back")]]
     await q.edit_message_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(kb))
 
@@ -1815,7 +1820,73 @@ def check_multi_account(ip: str, user_id: int) -> bool:
     if len(user_ip_map[ip]) > MULTI_ACCOUNT_LIMIT:
         return False
     return True
-  
+
+
+
+
+async def set_wallet(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """ربط محفظة USDT"""
+    uid = update.effective_user.id
+    user = get_user(uid)
+    if user.get("banned", False):
+        await update.message.reply_text("⛔ أنت محظور.")
+        return
+    try:
+        address = context.args[0]
+        # تحقق بسيط من شكل العنوان
+        if not address.startswith('T') or len(address) != 34:
+            await update.message.reply_text("❌ عنوان محفظة غير صالح (يرجى إدخال عنوان TRC20 صحيح).")
+            return
+        update_user(uid, {"usdt_address": address, "usdt_verified": True})
+        await update.message.reply_text(f"✅ تم ربط محفظتك: `{address}`\nيمكنك الآن سحب النقاط تلقائياً.", parse_mode="Markdown")
+    except:
+        await update.message.reply_text("استخدم: `/setwallet <عنوان_المحفظة>`")
+
+async def auto_withdraw(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """طلب سحب تلقائي"""
+    q = update.callback_query
+    await q.answer()
+    uid = q.from_user.id
+    user = get_user(uid)
+    if user.get("banned", False):
+        await q.answer("⛔ أنت محظور", show_alert=True)
+        return
+    if not user.get("usdt_address"):
+        await q.message.reply_text("⚠️ يرجى ربط محفظتك أولاً باستخدام الأمر `/setwallet <عنوان TRC20>`", parse_mode="Markdown")
+        return
+    w = user.get("withdrawable_points", 0)
+    if w < MIN_WITHDRAW_POINTS:
+        need = MIN_WITHDRAW_POINTS - w
+        await q.message.reply_text(f"💰 رصيدك القابل للسحب: {w}\nتحتاج {need} نقطة إضافية للحد الأدنى للسحب (120,000 نقطة = 3$).")
+        return
+    amt = w // POINTS_PER_DOLLAR
+    deduct = amt * POINTS_PER_DOLLAR
+    new_w = w - deduct
+    update_user(uid, {"withdrawable_points": new_w})
+    # تسجيل طلب السحب التلقائي
+    withdrawal_req = {
+        "user_id": uid,
+        "amount_usd": amt,
+        "points_deducted": deduct,
+        "wallet_address": user["usdt_address"],
+        "status": "auto_processed",
+        "date": datetime.utcnow().isoformat()
+    }
+    db["auto_withdrawals"].insert_one(withdrawal_req)
+    # هنا يمكنك إضافة كود الاتصال بـ API للتحويل الفعلي (مثلاً باستخدام NowPayments أو أي مزود)
+    # لكن للاختبار، سنعتبرها محاكاة
+    await q.message.reply_text(f"✅ تم طلب سحب تلقائي بقيمة {amt}$\nسيتم إرسال المبلغ إلى محفظتك خلال 24 ساعة.", parse_mode="Markdown")
+    # إبلاغ الأدمن
+    await context.bot.send_message(ADMIN_ID, f"💰 سحب تلقائي: المستخدم {uid} سحب {amt}$ إلى عنوان {user['usdt_address']}")
+
+
+
+async def set_wallet_btn(update, context):
+    q = update.callback_query
+    await q.answer()
+    await q.message.reply_text("أرسل الأمر: `/setwallet <عنوان محفظتك TRC20>`", parse_mode="Markdown")
+
+
       
 
 # ========== تشغيل البوت ==========
@@ -1847,6 +1918,7 @@ def main():
     app.add_handler(CommandHandler("start_challenge", start_global_challenge))
     app.add_handler(CommandHandler("end_challenge", end_global_challenge))
     app.add_handler(CommandHandler("cheatlogs", cheat_logs))
+    app.add_handler(CommandHandler("setwallet", set_wallet))
 
     callbacks = [
         ("^content_menu$", content_menu), ("^earn_menu$", earn_menu), ("^account_menu$", account_menu),
@@ -1863,7 +1935,9 @@ def main():
         ("^admin_ban_btn$", admin_ban_btn), ("^admin_unban_btn$", admin_unban_btn),
         ("^admin_list_banned_btn$", admin_list_banned_btn), ("^admin_userinfo_btn$", admin_userinfo_btn),
         ("^admin_broadcast$", admin_broadcast_start), ("^redeem_coupon$", redeem_coupon),
-        ("^convert_points$", convert_points),
+        ("^convert_points$", convert_points), ("^set_wallet_btn$", set_wallet_btn),
+        ("^auto_withdraw$", auto_withdraw),
+
     ]
     for pattern, handler in callbacks:
         app.add_handler(CallbackQueryHandler(handler, pattern=pattern))
