@@ -218,12 +218,17 @@ async def log_action(admin_id: int, action_type: str, target_user_id: int = None
         traceback.print_exc()
 
 
-def await log_action(admin_id: int, action_type: str, target_user_id: int = None, details: str = ""):
+async def log_action(admin_id: int, action_type: str, target_user_id: int = None, details: str = ""):
     try:
-        doc = {"timestamp": datetime.utcnow(), "admin_id": admin_id, "action_type": action_type,
-               "target_user_id": target_user_id, "details": details}
+        doc = {
+            "timestamp": datetime.utcnow(),
+            "admin_id": admin_id,
+            "action_type": action_type,
+            "target_user_id": target_user_id,
+            "details": details
+        }
         result = audit_col.insert_one(doc)
-        print(f"✅ [AUDIT] '{action_type}' (ID: {result.inserted_id})")
+        print(f"✅ [AUDIT] {action_type} (ID: {result.inserted_id})")
     except Exception as e:
         print(f"❌ [AUDIT] فشل: {e}")
 
