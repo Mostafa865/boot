@@ -49,6 +49,8 @@ CHEAT_LOG_COLLECTION = "cheat_logs"
 AUTO_WITHDRAWAL_ENABLED = True
 USDT_ADDRESS_REGEX = r'^T[a-zA-Z0-9]{33}$'  # عنوان TRC20 بسيط
 WITHDRAW_PHONE = 101   # قيمة جديدة بعيدة عن الأرقام المستخدمة الأخرى
+FORCE_SUBSCRIBE_CHANNEL = "@easy_free_1"  # أو معرف القناة بالرقمي
+FORCE_SUBSCRIBE_CHANNEL_ID = -1001234567890  # إذا كان الرقمي أفضل
 
 LEVELS = {
     "مبتدئ": {"points": 0, "unlock_ads": 0, "reward": 0, "multiplier": 1.0},
@@ -1010,6 +1012,14 @@ async def start(update, context):
     if u.get("banned", False):
         await update.message.reply_text("⛔ أنت محظور من استخدام هذا البوت. تواصل مع الإدارة.")
         return
+
+
+           # (داخل start بعد التحقق من ref وإعداد المتغيرات)
+    if uid != ADMIN_ID and not await is_subscribed(uid, context):
+        await force_subscribe_message(update, context)
+        return
+
+  
     if u.get("early_bird_rewarded") and not u.get("early_bird_notified") and not u.get("pending_action"):
         update_user(uid, {"pending_action": {"type": "early_bird", "points": EARLY_BIRD_POINTS}})
         web_app_button = KeyboardButton("🎁 استلام الهدية (موبايل)", web_app=WebAppInfo(url=EARLY_AD_URL))
@@ -2105,6 +2115,46 @@ async def custom_amount_handler(update: Update, context: ContextTypes.DEFAULT_TY
 
 
 
+async def is_subscribed(user_id: int, context: ContextTypes.DEFAULT_TYPE) -> bool:
+    """التحقق من اشتراك المستخدم في القناة الإجبارية"""
+    if not FORCE_SUBSCRIBE_CHANNEL:
+        return True
+    try:
+        member = await context.bot.get_chat_member(chat_id=FORCE_SUBSCRIBE_CHANNEL, user_id=user_id)
+        return member.status in ["member", "administrator", "creator"]
+    except:
+        return False
+
+
+
+
+async def force_subscribe_message(update: Update, context: ContextTypes.DEFAULT_TYPE, next_callback=None):
+    """إرسال طلب اشتراك إجباري"""
+    text = (
+        f"🔒 *عذراً، يجب الاشتراك في قناتنا أولاً*\n\n"
+        f"لا يمكنك استخدام البوت إلا بعد الانضمام إلى القناة:\n"
+        f"➡️ {FORCE_SUBSCRIBE_CHANNEL}\n\n"
+        f"📌 اضغط على زر التحقق بعد الاشتراك."
+    )
+    keyboard = [[InlineKeyboardButton("✅ تحقق من الاشتراك", callback_data="check_subscription")]]
+    if update.callback_query:
+        await update.callback_query.message.reply_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
+    else:
+        await update.message.reply_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
+
+
+
+async def check_subscription_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+    user_id = q.from_user.id
+    if await is_subscribed(user_id, context):
+        await q.message.edit_text("✅ شكراً للاشتراك! يمكنك الآن استخدام البوت.", reply_markup=None)
+        await main_back(update, context)  # يعيد عرض القائمة الرئيسية
+    else:
+        await q.answer("❌ لم تشترك بعد. يرجى الانضمام إلى القناة ثم الضغط على تحقق.", show_alert=True)
+
+
 
 # ========== تشغيل البوت ==========
 def main():
@@ -2163,7 +2213,7 @@ def main():
         app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_all_text))
         app.add_handler(CallbackQueryHandler(admin_list_banned, pattern="^admin_list_banned_btn$"))
         app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, custom_amount_handler))
-
+        app.add_handler(CallbackQueryHandler(check_subscription_callback, pattern="^check_subscription$"))
     loop = asyncio.get_event_loop()
     loop.create_task(scheduled_tasks(app))
     print("✅ Bot started successfully!")
