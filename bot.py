@@ -1396,18 +1396,15 @@ async def admin_broadcast_start(update: Update, context: ContextTypes.DEFAULT_TY
     await q.answer()
     if q.from_user.id != ADMIN_ID:
         await q.answer("⛔ غير مصرح.", show_alert=True)
-        return ConversationHandler.END
-    await q.message.reply_text("📢 *رسالة جماعية*\nأرسل النص الذي تريد نشره لجميع المستخدمين:", parse_mode="Markdown")
-    return BROADCAST_MSG
+        return
+    context.user_data['awaiting_broadcast'] = True
+    await q.message.reply_text("📢 *رسالة جماعية*\nأرسل النص الذي تريد نشره:", parse_mode="Markdown")
 
 async def admin_broadcast_send(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ADMIN_ID:
-        await update.message.reply_text("⛔ غير مصرح.")
-        return ConversationHandler.END
+    if not context.user_data.get('awaiting_broadcast'):
+        return
+    context.user_data['awaiting_broadcast'] = False
     msg = update.message.text
-    if not msg:
-        await update.message.reply_text("❌ رسالة فارغة.")
-        return ConversationHandler.END
     status_msg = await update.message.reply_text("⏳ جاري الإرسال...")
     success = 0
     fail = 0
@@ -1713,13 +1710,8 @@ def main():
     app.add_handler(CallbackQueryHandler(redeem_coupon, pattern="^redeem_coupon$"))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, process_coupon))
     # محادثة البث الجماعي المنفصلة
-    broadcast_conv = ConversationHandler(
-        entry_points=[CallbackQueryHandler(admin_broadcast_start, pattern="^admin_broadcast$")],
-        states={BROADCAST_MSG: [MessageHandler(filters.TEXT & ~filters.COMMAND, admin_broadcast_send)]},
-        fallbacks=[CommandHandler("start", start)],
-        per_chat=False, name="broadcast_conv"
-    )
-    app.add_handler(broadcast_conv)
+    app.add_handler(CallbackQueryHandler(admin_broadcast_start, pattern="^admin_broadcast$"))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.User(ADMIN_ID), admin_broadcast_send))
     # المحادثات الرئيسية للمحتوى
     main_conv = ConversationHandler(
         entry_points=[CallbackQueryHandler(handle_platform, pattern="^(facebook|instagram|twitter|linkedin|email|ad|article|ideas)$"),
