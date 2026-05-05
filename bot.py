@@ -50,7 +50,7 @@ AUTO_WITHDRAWAL_ENABLED = True
 USDT_ADDRESS_REGEX = r'^T[a-zA-Z0-9]{33}$'  # عنوان TRC20 بسيط
 WITHDRAW_PHONE = 101   # قيمة جديدة بعيدة عن الأرقام المستخدمة الأخرى
 FORCE_SUBSCRIBE_CHANNEL = "@easy_free_1"  # أو معرف القناة بالرقمي
-FORCE_SUBSCRIBE_CHANNEL_ID = -1001234567890  # إذا كان الرقمي أفضل
+FORCE_SUBSCRIBE_CHANNEL_ID = -1001234567890  # الرقم الحقيقي للقناة
 
 LEVELS = {
     "مبتدئ": {"points": 0, "unlock_ads": 0, "reward": 0, "multiplier": 1.0},
@@ -1013,11 +1013,14 @@ async def start(update, context):
         await update.message.reply_text("⛔ أنت محظور من استخدام هذا البوت. تواصل مع الإدارة.")
         return
 
+async def force_subscribe_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # ... نص الرسالة ...
+    keyboard = [
+        [InlineKeyboardButton("🔗 انضمام للقناة", url="https://t.me/easy_free_1")],
+        [InlineKeyboardButton("✅ تأكيد الاشتراك", callback_data="check_subscription")]
+    ]
+    # ... باقي الكود ...
 
-           # (داخل start بعد التحقق من ref وإعداد المتغيرات)
-    if uid != ADMIN_ID and not await is_subscribed(uid, context):
-        await force_subscribe_message(update, context)
-        return
 
   
     if u.get("early_bird_rewarded") and not u.get("early_bird_notified") and not u.get("pending_action"):
@@ -2153,6 +2156,8 @@ async def check_subscription_callback(update: Update, context: ContextTypes.DEFA
         await main_back(update, context)  # يعيد عرض القائمة الرئيسية
     else:
         await q.answer("❌ لم تشترك بعد. يرجى الانضمام إلى القناة ثم الضغط على تحقق.", show_alert=True)
+
+
 
 
 
