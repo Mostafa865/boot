@@ -9,16 +9,16 @@
         body { background: #1a1a2e; color: white; font-family: Arial; text-align: center; padding: 20px; }
         .btn { background: #6c3df4; padding: 15px 30px; border-radius: 12px; border: none; font-size: 18px; cursor: pointer; color: white; width: 100%; max-width: 300px; margin-top: 20px; }
         .btn:disabled { background: #444; cursor: not-allowed; }
-        #collectBtn { background: #22c55e; display: none; }
+        #collectBtn { background: #22c55e; }
         #status { margin-top: 20px; font-size: 16px; color: #a78bfa; }
     </style>
 </head>
 <body>
     <h2>📺 شاهد الإعلان واكسب نقاط!</h2>
-    <p>اضغط الزر عشان يظهر الإعلان</p>
+    <div id="status">اضغط الزر عشان يظهر الإعلان</div>
     <button class="btn" id="watchBtn" onclick="watchAd()">🎬 تشغيل الإعلان</button>
-    <button class="btn" id="collectBtn" onclick="collectPoints()">🎁 استلم النقاط وأغلق</button>
-    <div id="status"></div>
+    <br>
+    <button class="btn" id="collectBtn" onclick="collectPoints()" style="margin-top:15px">🎁 استلم النقاط وأغلق</button>
 
     <script>
         let tg = window.Telegram.WebApp;
@@ -30,16 +30,11 @@
             const btn = document.getElementById('watchBtn');
             const statusDiv = document.getElementById('status');
             btn.disabled = true;
-            statusDiv.innerText = "⏳ جاري تحميل الإعلان...";
+            statusDiv.innerText = "⏳ جاري تشغيل الإعلان...";
             try {
-                await show_10959746();
-                statusDiv.innerText = "✅ تم مشاهدة الإعلان!";
-                document.getElementById('watchBtn').style.display = 'none';
-                document.getElementById('collectBtn').style.display = 'block';
-            } catch(e) {
-                statusDiv.innerText = "❌ حاول مجدداً.";
-                btn.disabled = false;
-            }
+                show_10959746();
+            } catch(e) {}
+            statusDiv.innerText = "✅ شاهد الإعلان ثم اضغط استلم النقاط";
         }
 
         function collectPoints() {
