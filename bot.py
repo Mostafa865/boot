@@ -1,4 +1,4 @@
-# v20.0 - النسخة النهائية مع أزرار منفصلة للموبايل واللاب لجميع الإعلانات
+# v20.1 - النسخة النهائية مع لوحة أدمن متقدمة وكاملة
 import logging, random, csv, io, asyncio
 from datetime import datetime, timedelta
 from bson.objectid import ObjectId
@@ -75,7 +75,7 @@ client = openai.OpenAI(base_url="https://openrouter.ai/api/v1", api_key=OPENROUT
 
 TOPIC, TONE, WEEKLY_TOPIC, BROADCAST_MSG = range(4)
 
-# ========== دوال قاعدة البيانات (بدون تغيير) ==========
+# ========== دوال قاعدة البيانات ==========
 def get_user(user_id):
     uid = str(user_id)
     user = users_col.find_one({"_id": uid})
@@ -125,7 +125,8 @@ def get_user(user_id):
             "pending_level_upgrade": None,
             "highest_total_points": 300,
             "wheel_spins_today": 0,
-            "last_wheel_date": ""
+            "last_wheel_date": "",
+            "banned": False
         }
         users_col.insert_one(user)
     else:
@@ -136,11 +137,11 @@ def get_user(user_id):
                   "weekly_mission_claimed","ambassador_badge","last_daily_report_date","total_ads_watched","badges",
                   "pending_action","early_bird_rewarded","early_bird_notified","challenge_active","challenge_points","last_challenge_reset",
                   "daily_converted","level","level_reward_claimed","pending_level_upgrade","highest_total_points",
-                  "wheel_spins_today","last_wheel_date"]
+                  "wheel_spins_today","last_wheel_date","banned"]
         for field in fields:
             if field not in user:
-                if field in ["wheel_spins_today","last_wheel_date"]:
-                    user[field] = 0 if field=="wheel_spins_today" else ""
+                if field in ["wheel_spins_today","last_wheel_date","banned"]:
+                    user[field] = 0 if field=="wheel_spins_today" else ("" if field=="last_wheel_date" else False)
                 elif field in ["level","level_reward_claimed","pending_level_upgrade","highest_total_points"]:
                     user[field] = "مبتدئ" if field=="level" else (False if field=="level_reward_claimed" else (None if field=="pending_level_upgrade" else 300))
                 else:
@@ -299,7 +300,7 @@ def reduce_pending_level_ads(user_id):
     update_user(user_id, {"pending_level_upgrade": pending})
     return True
 
-# ========== عجلة الحظ (معدلة لزرين) ==========
+# ========== عجلة الحظ ==========
 def spin_wheel():
     return random.choice(WHEEL_PRIZES)
 
@@ -308,6 +309,9 @@ async def wheel_of_fortune(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     uid = query.from_user.id
     user_data = get_user(uid)
+    if user_data.get("banned", False):
+        await query.answer("⛔ أنت محظور", show_alert=True)
+        return
     today = datetime.utcnow().strftime("%Y-%m-%d")
     if user_data.get("last_wheel_date") != today:
         update_user(uid, {"wheel_spins_today": 0, "last_wheel_date": today})
@@ -320,14 +324,12 @@ async def wheel_of_fortune(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
     update_user(uid, {"pending_action": {"type": "wheel"}})
-    # زر للموبايل
     web_app_button = KeyboardButton("🎡 شاهد الإعلان واستدير (موبايل)", web_app=WebAppInfo(url=WHEEL_URL))
     reply_markup = ReplyKeyboardMarkup(
         keyboard=[[web_app_button]],
         resize_keyboard=True,
         one_time_keyboard=True
     )
-    # زر للاب
     await query.message.reply_text(
         f"🎡 *عجلة الحظ* (المتبقي اليوم: {WHEEL_DAILY_LIMIT - spins_today})\n\n"
         f"📱 *موبايل:* اضغط الزر أسفل الشاشة\n💻 *لاب:* اضغط الزر أدناه 👇",
@@ -342,7 +344,7 @@ async def wheel_of_fortune(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ])
     )
 
-# ========== نظام الكوبونات (معدل) ==========
+# ========== نظام الكوبونات ==========
 async def create_coupon(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         await update.message.reply_text("⛔ غير مصرح.")
@@ -388,6 +390,11 @@ async def process_coupon(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.user_data.get('awaiting_coupon'):
         return
     uid = update.effective_user.id
+    user_data = get_user(uid)
+    if user_data.get("banned", False):
+        await update.message.reply_text("⛔ أنت محظور.")
+        context.user_data['awaiting_coupon'] = False
+        return
     code = update.message.text.strip().upper()
     coupon = coupons_col.find_one({"code": code})
     if not coupon:
@@ -406,7 +413,6 @@ async def process_coupon(update: Update, context: ContextTypes.DEFAULT_TYPE):
     update_user(uid, {"pending_action": {"type": "coupon", "code": code, "points": coupon["points"]}})
     print(f"✅ Coupon pending action set for user {uid}: {coupon['points']} points")
 
-    # زرين للموبايل واللاب
     web_app_button = KeyboardButton("📺 شاهد الإعلان واستلم الكوبون (موبايل)", web_app=WebAppInfo(url=AD_URL))
     reply_markup = ReplyKeyboardMarkup(
         keyboard=[[web_app_button]],
@@ -428,7 +434,7 @@ async def process_coupon(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     context.user_data['awaiting_coupon'] = False
 
-# ========== العروض الموقوتة (بدون تغيير) ==========
+# ========== العروض الموقوتة ==========
 def get_active_flash_offer():
     now = datetime.utcnow()
     offer = offers_col.find_one({"active": True, "start_time": {"$lte": now}, "end_time": {"$gte": now}})
@@ -451,7 +457,7 @@ async def admin_stop_offer(update, context):
     offers_col.update_one({}, {"$set": {"active": False}})
     await update.message.reply_text("✅ تم إيقاف العرض.")
 
-# ========== تحديات الأصدقاء (معدل في الإشعار) ==========
+# ========== تحديات الأصدقاء ==========
 async def challenge_friend(update, context):
     q = update.callback_query
     await q.answer()
@@ -467,6 +473,11 @@ async def challenge_target(update, context):
     if not context.user_data.get('awaiting_challenge'):
         return
     uid = update.effective_user.id
+    user_data = get_user(uid)
+    if user_data.get("banned", False):
+        await update.message.reply_text("⛔ أنت محظور.")
+        context.user_data['awaiting_challenge'] = False
+        return
     target_input = update.message.text.strip().lstrip('@')
     try:
         target = await context.bot.get_chat(target_input)
@@ -483,7 +494,7 @@ async def challenge_target(update, context):
     await update.message.reply_text("✅ تم إرسال التحدي!")
     context.user_data['awaiting_challenge'] = False
 
-# ========== القوائم (بدون تغيير) ==========
+# ========== القوائم ==========
 def main_menu():
     kb = [
         [InlineKeyboardButton("✍️ كتابة محتوى", callback_data="content_menu"),
@@ -497,6 +508,10 @@ def main_menu():
 async def content_menu(update, context):
     q = update.callback_query
     await q.answer()
+    uid = q.from_user.id
+    if get_user(uid).get("banned", False):
+        await q.answer("⛔ أنت محظور", show_alert=True)
+        return
     kb = [
         [InlineKeyboardButton("📘 بوست فيسبوك", callback_data="facebook"),
          InlineKeyboardButton("📸 كابشن انستجرام", callback_data="instagram")],
@@ -514,6 +529,10 @@ async def content_menu(update, context):
 async def earn_menu(update, context):
     q = update.callback_query
     await q.answer()
+    uid = q.from_user.id
+    if get_user(uid).get("banned", False):
+        await q.answer("⛔ أنت محظور", show_alert=True)
+        return
     kb = [
         [InlineKeyboardButton("📺 شاهد إعلان", callback_data="watch_ad"),
          InlineKeyboardButton("🎲 صندوق الحظ", callback_data="mystery_box")],
@@ -530,7 +549,11 @@ async def earn_menu(update, context):
 async def account_menu(update, context):
     q = update.callback_query
     await q.answer()
-    u = get_user(q.from_user.id)
+    uid = q.from_user.id
+    u = get_user(uid)
+    if u.get("banned", False):
+        await q.answer("⛔ أنت محظور", show_alert=True)
+        return
     ambassador = "🏅 *سفير البوت* 🏅\n" if u.get("ambassador_badge") else ""
     badges_text = "🏅 *الشارات:* " + ", ".join(u.get("badges", [])) if u.get("badges") else "🏅 *الشارات:* لا توجد"
     next_streak = u.get("ad_streak",0)+1
@@ -578,6 +601,10 @@ async def account_menu(update, context):
 async def help_callback(update, context):
     q = update.callback_query
     await q.answer()
+    uid = q.from_user.id
+    if get_user(uid).get("banned", False):
+        await q.answer("⛔ أنت محظور", show_alert=True)
+        return
     text = (f"ℹ️ *تعليمات البوت*\n\n"
             f"1️⃣ شاهد إعلانات يومياً (حد {MAX_ADS_PER_DAY}).\n"
             f"2️⃣ Streak: كل يوم يزيد المضاعف 5% حتى 2x.\n"
@@ -625,6 +652,9 @@ async def referral_share(update, context):
     q = update.callback_query
     await q.answer()
     uid = q.from_user.id
+    if get_user(uid).get("banned", False):
+        await q.answer("⛔ أنت محظور", show_alert=True)
+        return
     link = f"https://t.me/easy_free1bot?start=ref_{uid}"
     whatsapp = f"https://wa.me/?text=اشترك في هذا البوت واكسب نقاطاً: {link}"
     telegram = f"https://t.me/share/url?url={link}&text=انضم إلي"
@@ -650,18 +680,201 @@ def tone_menu():
     return InlineKeyboardMarkup(kb)
 
 def admin_menu():
-    kb = [[InlineKeyboardButton("👥 المستخدمون", callback_data="admin_users"), InlineKeyboardButton("📊 الإحصائيات", callback_data="admin_stats")],
-          [InlineKeyboardButton("💰 طلبات السحب", callback_data="admin_withdrawals")],
-          [InlineKeyboardButton("📢 رسالة جماعية", callback_data="admin_broadcast")],
-          [InlineKeyboardButton("📁 تصدير Excel", callback_data="admin_export")]]
+    kb = [
+        [InlineKeyboardButton("👥 المستخدمون", callback_data="admin_users"),
+         InlineKeyboardButton("📊 الإحصائيات", callback_data="admin_stats")],
+        [InlineKeyboardButton("➕ إضافة نقاط", callback_data="admin_add_points_btn"),
+         InlineKeyboardButton("➖ خصم نقاط", callback_data="admin_remove_points_btn")],
+        [InlineKeyboardButton("🚫 حظر مستخدم", callback_data="admin_ban_btn"),
+         InlineKeyboardButton("✅ إلغاء حظر", callback_data="admin_unban_btn")],
+        [InlineKeyboardButton("📋 المحظورين", callback_data="admin_list_banned_btn"),
+         InlineKeyboardButton("🔍 معلومات مستخدم", callback_data="admin_userinfo_btn")],
+        [InlineKeyboardButton("💰 طلبات السحب", callback_data="admin_withdrawals")],
+        [InlineKeyboardButton("📢 رسالة جماعية", callback_data="admin_broadcast")],
+        [InlineKeyboardButton("📁 تصدير Excel", callback_data="admin_export")]
+    ]
     return InlineKeyboardMarkup(kb)
 
-# ========== تحويل النقاط (بدون تغيير) ==========
+# ========== أوامر الأدمن الجديدة ==========
+async def admin_add_points(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("⛔ غير مصرح.")
+        return
+    try:
+        user_id = int(context.args[0])
+        amount = int(context.args[1])
+        point_type = context.args[2].lower() if len(context.args) > 2 else "normal"
+        if point_type not in ["normal", "withdrawable"]:
+            await update.message.reply_text("❌ نوع النقاط غير صحيح. استخدم `normal` أو `withdrawable`.")
+            return
+        user = get_user(user_id)
+        if point_type == "normal":
+            new_points = user["points"] + amount
+            update_user(user_id, {"points": new_points})
+            await update.message.reply_text(f"✅ تم إضافة {amount} نقطة عادية للمستخدم `{user_id}`. رصيده الآن: *{new_points}*", parse_mode="Markdown")
+        else:
+            new_w = user["withdrawable_points"] + amount
+            update_user(user_id, {"withdrawable_points": new_w})
+            await update.message.reply_text(f"✅ تم إضافة {amount} نقطة قابلة للسحب للمستخدم `{user_id}`. رصيده الآن: *{new_w}*", parse_mode="Markdown")
+    except Exception as e:
+        await update.message.reply_text(f"❌ خطأ: استخدم `/addpoints <user_id> <amount> [normal|withdrawable]`\n{str(e)}")
+
+async def admin_remove_points(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("⛔ غير مصرح.")
+        return
+    try:
+        user_id = int(context.args[0])
+        amount = int(context.args[1])
+        point_type = context.args[2].lower() if len(context.args) > 2 else "normal"
+        if point_type not in ["normal", "withdrawable"]:
+            await update.message.reply_text("❌ نوع النقاط غير صحيح. استخدم `normal` أو `withdrawable`.")
+            return
+        user = get_user(user_id)
+        if point_type == "normal":
+            if user["points"] < amount:
+                await update.message.reply_text(f"❌ رصيد المستخدم لا يكفي. رصيده {user['points']} نقطة.")
+                return
+            new_points = user["points"] - amount
+            update_user(user_id, {"points": new_points})
+            await update.message.reply_text(f"✅ تم خصم {amount} نقطة عادية من المستخدم `{user_id}`. رصيده الآن: *{new_points}*", parse_mode="Markdown")
+        else:
+            if user["withdrawable_points"] < amount:
+                await update.message.reply_text(f"❌ رصيد المستخدم القابل للسحب لا يكفي. رصيده {user['withdrawable_points']} نقطة.")
+                return
+            new_w = user["withdrawable_points"] - amount
+            update_user(user_id, {"withdrawable_points": new_w})
+            await update.message.reply_text(f"✅ تم خصم {amount} نقطة قابلة للسحب من المستخدم `{user_id}`. رصيده الآن: *{new_w}*", parse_mode="Markdown")
+    except Exception as e:
+        await update.message.reply_text(f"❌ خطأ: استخدم `/removepoints <user_id> <amount> [normal|withdrawable]`\n{str(e)}")
+
+async def admin_ban(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("⛔ غير مصرح.")
+        return
+    try:
+        user_id = int(context.args[0])
+        user = get_user(user_id)
+        if user.get("banned", False):
+            await update.message.reply_text(f"⚠️ المستخدم `{user_id}` محظور بالفعل.")
+            return
+        update_user(user_id, {"banned": True})
+        await update.message.reply_text(f"✅ تم حظر المستخدم `{user_id}`. لن يتمكن من استخدام البوت.")
+        try:
+            await context.bot.send_message(user_id, "⛔ لقد تم حظرك من استخدام هذا البوت. للمزيد من المعلومات، تواصل مع الإدارة.")
+        except:
+            pass
+    except Exception as e:
+        await update.message.reply_text(f"❌ خطأ: استخدم `/ban <user_id>`\n{str(e)}")
+
+async def admin_unban(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("⛔ غير مصرح.")
+        return
+    try:
+        user_id = int(context.args[0])
+        user = get_user(user_id)
+        if not user.get("banned", False):
+            await update.message.reply_text(f"⚠️ المستخدم `{user_id}` غير محظور.")
+            return
+        update_user(user_id, {"banned": False})
+        await update.message.reply_text(f"✅ تم إلغاء حظر المستخدم `{user_id}`. يمكنه الآن استخدام البوت.")
+        try:
+            await context.bot.send_message(user_id, "✅ تم إلغاء حظرك. يمكنك الآن استخدام البوت مجدداً.")
+        except:
+            pass
+    except Exception as e:
+        await update.message.reply_text(f"❌ خطأ: استخدم `/unban <user_id>`\n{str(e)}")
+
+async def admin_list_banned(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("⛔ غير مصرح.")
+        return
+    banned_users = users_col.find({"banned": True})
+    banned_list = []
+    for user in banned_users:
+        try:
+            name = (await context.bot.get_chat(int(user["_id"]))).first_name
+        except:
+            name = f"ID:{user['_id']}"
+        banned_list.append(f"• {name} (`{user['_id']}`)")
+    if not banned_list:
+        await update.message.reply_text("✅ لا يوجد مستخدمون محظورون.")
+        return
+    text = "🚫 *قائمة المستخدمين المحظورين:*\n\n" + "\n".join(banned_list)
+    await update.message.reply_text(text, parse_mode="Markdown")
+
+async def admin_user_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("⛔ غير مصرح.")
+        return
+    try:
+        user_id = int(context.args[0])
+        user = get_user(user_id)
+        try:
+            chat = await context.bot.get_chat(user_id)
+            name = chat.first_name
+            username = f"@{chat.username}" if chat.username else "لا يوجد"
+        except:
+            name = "غير معروف"
+            username = "غير معروف"
+        banned_status = "✅ محظور" if user.get("banned") else "🟢 غير محظور"
+        text = (
+            f"👤 *معلومات المستخدم*\n"
+            f"• الاسم: {name}\n"
+            f"• المعرف: {username}\n"
+            f"• ID: `{user_id}`\n"
+            f"• المستوى: {user.get('level', 'مبتدئ')}\n"
+            f"• النقاط العادية: {user['points']}\n"
+            f"• النقاط القابلة للسحب: {user.get('withdrawable_points',0)}\n"
+            f"• Streak: {user.get('ad_streak',0)} يوم\n"
+            f"• إجمالي الإعلانات: {user.get('total_ads_watched',0)}\n"
+            f"• الدعوات المباشرة: {user.get('referrals',0)}\n"
+            f"• الشارات: {', '.join(user.get('badges',[])) or 'لا توجد'}\n"
+            f"• الحالة: {banned_status}"
+        )
+        await update.message.reply_text(text, parse_mode="Markdown")
+    except Exception as e:
+        await update.message.reply_text(f"❌ خطأ: استخدم `/userinfo <user_id>`\n{str(e)}")
+
+# ========== أزرار الأدمن ==========
+async def admin_add_points_btn(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+    await q.message.reply_text("➕ *إضافة نقاط*\nأرسل الأمر: `/addpoints <user_id> <العدد> [normal|withdrawable]`\n\nمثال: `/addpoints 123456789 500 normal`", parse_mode="Markdown")
+
+async def admin_remove_points_btn(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+    await q.message.reply_text("➖ *خصم نقاط*\nأرسل الأمر: `/removepoints <user_id> <العدد> [normal|withdrawable]`\n\nمثال: `/removepoints 123456789 200 normal`", parse_mode="Markdown")
+
+async def admin_ban_btn(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+    await q.message.reply_text("🚫 *حظر مستخدم*\nأرسل الأمر: `/ban <user_id>`", parse_mode="Markdown")
+
+async def admin_unban_btn(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+    await q.message.reply_text("✅ *إلغاء حظر*\nأرسل الأمر: `/unban <user_id>`", parse_mode="Markdown")
+
+async def admin_list_banned_btn(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await admin_list_banned(update, context)
+
+async def admin_userinfo_btn(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+    await q.message.reply_text("🔍 *معلومات مستخدم*\nأرسل الأمر: `/userinfo <user_id>`", parse_mode="Markdown")
+
+# ========== دوال تحويل النقاط ==========
 async def convert_points(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     uid = query.from_user.id
     user_data = get_user(uid)
+    if user_data.get("banned", False):
+        await query.answer("⛔ أنت محظور", show_alert=True)
+        return
     user_data = check_daily_tasks(user_data)
     update_user(uid, {"last_task_date": user_data["last_task_date"], "daily_converted": user_data["daily_converted"]})
 
@@ -697,6 +910,11 @@ async def process_conversion(update: Update, context: ContextTypes.DEFAULT_TYPE)
     if not context.user_data.get('awaiting_conversion'):
         return
     uid = update.effective_user.id
+    user_data = get_user(uid)
+    if user_data.get("banned", False):
+        await update.message.reply_text("⛔ أنت محظور.")
+        context.user_data['awaiting_conversion'] = False
+        return
     try:
         amount = int(update.message.text.strip())
         if amount <= 0 or amount % 100 != 0:
@@ -772,9 +990,12 @@ async def start(update, context):
         return
 
     u = get_user(uid)
+    if u.get("banned", False):
+        await update.message.reply_text("⛔ أنت محظور من استخدام هذا البوت. تواصل مع الإدارة.")
+        return
+
     if u.get("early_bird_rewarded") and not u.get("early_bird_notified") and not u.get("pending_action"):
         update_user(uid, {"pending_action": {"type": "early_bird", "points": EARLY_BIRD_POINTS}})
-        # زرين للهدية المبكرة
         web_app_button = KeyboardButton("🎁 استلام الهدية (موبايل)", web_app=WebAppInfo(url=EARLY_AD_URL))
         reply_markup = ReplyKeyboardMarkup(
             keyboard=[[web_app_button]],
@@ -800,12 +1021,15 @@ async def start(update, context):
             parse_mode="Markdown", reply_markup=main_menu()
         )
 
-# ========== دوال المحتوى (AI) بدون تغيير ==========
+# ========== دوال المحتوى (AI) ==========
 async def handle_platform(update, context):
     q = update.callback_query
     await q.answer()
     uid = q.from_user.id
     u = check_daily_tasks(get_user(uid))
+    if u.get("banned", False):
+        await q.answer("⛔ أنت محظور", show_alert=True)
+        return
     update_user(uid, {"tasks": u["tasks"], "last_task_date": u["last_task_date"]})
     if u["points"] < POINTS_PER_USE:
         await q.message.reply_text(f"❌ نقاطك مش كافية! رصيدك: {u['points']}", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("📺 شاهد إعلان", callback_data="watch_ad")]]))
@@ -821,6 +1045,9 @@ async def weekly(update, context):
     await q.answer()
     uid = q.from_user.id
     u = check_daily_tasks(get_user(uid))
+    if u.get("banned", False):
+        await q.answer("⛔ أنت محظور", show_alert=True)
+        return
     if u["points"] < POINTS_PER_USE:
         await q.message.reply_text("❌ نقاطك مش كافية!", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("📺 شاهد إعلان", callback_data="watch_ad")]]))
         return ConversationHandler.END
@@ -842,6 +1069,9 @@ async def get_tone(update, context):
     await q.edit_message_text("⏳ جاري الكتابة...")
     uid = q.from_user.id
     u = check_daily_tasks(get_user(uid))
+    if u.get("banned", False):
+        await q.answer("⛔ أنت محظور", show_alert=True)
+        return
     u["tasks"]["used"] = True
     new_pts = u["points"] - POINTS_PER_USE
     update_user(uid, {"points": new_pts, "uses": u["uses"]+1, "tasks": u["tasks"], "last_task_date": u["last_task_date"]})
@@ -869,6 +1099,9 @@ async def get_weekly_topic(update, context):
     await update.message.reply_text("⏳ جاري كتابة 7 بوستات...")
     uid = update.effective_user.id
     u = get_user(uid)
+    if u.get("banned", False):
+        await update.message.reply_text("⛔ أنت محظور.")
+        return ConversationHandler.END
     new_pts = u["points"] - POINTS_PER_USE
     update_user(uid, {"points": new_pts, "uses": u["uses"]+1})
     try:
@@ -879,7 +1112,7 @@ async def get_weekly_topic(update, context):
         await update.message.reply_text(f"❌ خطأ: {str(e)[:100]}", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏠 الرئيسية", callback_data="main_back")]]))
     return ConversationHandler.END
 
-# ========== دوال الإعلانات والمكافآت (المعالج الرئيسي) ==========
+# ========== دوال الإعلانات والمكافآت ==========
 async def handle_web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
     print("🔥 WebApp data received!")
     data = update.message.web_app_data.data
@@ -888,6 +1121,9 @@ async def handle_web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     if data == "ad_watched":
         u = get_user(uid)
+        if u.get("banned", False):
+            await update.message.reply_text("⛔ أنت محظور.")
+            return
         today = datetime.utcnow().strftime("%Y-%m-%d")
         if u.get("last_ad_date") != today:
             update_user(uid, {"ad_watch_today": 0, "last_ad_date": today})
@@ -979,6 +1215,9 @@ async def handle_web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     elif data == "bonus_ad_watched":
         u = get_user(uid)
+        if u.get("banned", False):
+            await update.message.reply_text("⛔ أنت محظور.")
+            return
         pending = u.get("pending_action")
         if pending and pending.get("type") == "claim_bonus":
             u2 = check_daily_tasks(u)
@@ -993,6 +1232,9 @@ async def handle_web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     elif data == "referral_ad_watched":
         u = get_user(uid)
+        if u.get("banned", False):
+            await update.message.reply_text("⛔ أنت محظور.")
+            return
         pending = u.get("pending_action")
         if pending and pending.get("type") == "referral_reward":
             points = pending.get("points", REFERRAL_WITHDRAWABLE)
@@ -1003,6 +1245,9 @@ async def handle_web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     elif data == "early_ad_watched":
         u = get_user(uid)
+        if u.get("banned", False):
+            await update.message.reply_text("⛔ أنت محظور.")
+            return
         pending = u.get("pending_action")
         if pending and pending.get("type") == "early_bird":
             points = pending.get("points", EARLY_BIRD_POINTS)
@@ -1013,6 +1258,9 @@ async def handle_web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     elif data == "challenge_ad_watched":
         u = get_user(uid)
+        if u.get("banned", False):
+            await update.message.reply_text("⛔ أنت محظور.")
+            return
         pending = u.get("pending_action")
         if pending and pending.get("type") == "challenge_reward":
             points = pending.get("points", 1000)
@@ -1023,6 +1271,9 @@ async def handle_web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     elif data == "monthly_ad_watched":
         u = get_user(uid)
+        if u.get("banned", False):
+            await update.message.reply_text("⛔ أنت محظور.")
+            return
         pending = u.get("pending_action")
         if pending and pending.get("type") == "monthly_contest":
             points = pending.get("points", 50 * POINTS_PER_DOLLAR)
@@ -1033,6 +1284,9 @@ async def handle_web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     elif data == "wheel_spun":
         u = get_user(uid)
+        if u.get("banned", False):
+            await update.message.reply_text("⛔ أنت محظور.")
+            return
         pending = u.get("pending_action")
         if pending and pending.get("type") == "wheel":
             today = datetime.utcnow().strftime("%Y-%m-%d")
@@ -1066,6 +1320,9 @@ async def mystery_box(update, context):
     q = update.callback_query
     await q.answer()
     u = get_user(q.from_user.id)
+    if u.get("banned", False):
+        await q.answer("⛔ أنت محظور", show_alert=True)
+        return
     if u.get("last_box_date") == datetime.utcnow().strftime("%Y-%m-%d"):
         await q.message.reply_text("❌ فتحت الصندوق اليوم!", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏠 القائمة", callback_data="main_back")]]))
         return
@@ -1075,7 +1332,6 @@ async def mystery_box(update, context):
         if data["streak_range"][0] <= streak <= data["streak_range"][1]:
             level = lvl
             break
-    # صندوق الحظ يستخدم زر ويب آب من نوع Inline (زر واحد لكل من الموبايل واللاب)
     await q.message.reply_text(f"🎲 *صندوق {level}* 🎲\n🔥 Streak: {streak}\n⚠️ شاهد الإعلان أولاً:", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(f"🎁 افتح صندوق {level}", web_app=WebAppInfo(url=BOX_AD_URL))]]))
 
 async def watch_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1083,6 +1339,9 @@ async def watch_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await q.answer()
     uid = q.from_user.id
     u = get_user(uid)
+    if u.get("banned", False):
+        await q.answer("⛔ أنت محظور", show_alert=True)
+        return
     today = datetime.utcnow().strftime("%Y-%m-%d")
     if u.get("last_ad_date") != today:
         update_user(uid, {"ad_watch_today": 0, "last_ad_date": today})
@@ -1095,7 +1354,6 @@ async def watch_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
     earn = int(POINTS_PER_AD * mul * level_multiplier)
     remaining = MAX_ADS_PER_DAY - u["ad_watch_today"]
 
-    # زر للموبايل
     web_app_button = KeyboardButton("📺 شاهد الإعلان الآن (موبايل)", web_app=WebAppInfo(url=AD_URL))
     reply_markup = ReplyKeyboardMarkup(
         keyboard=[[web_app_button]],
@@ -1110,7 +1368,6 @@ async def watch_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=reply_markup
     )
 
-    # زر للاب
     await q.message.reply_text(
         "💻 *للاب فقط:*",
         parse_mode="Markdown",
@@ -1123,6 +1380,9 @@ async def daily_tasks(update, context):
     q = update.callback_query
     await q.answer()
     u = check_daily_tasks(get_user(q.from_user.id))
+    if u.get("banned", False):
+        await q.answer("⛔ أنت محظور", show_alert=True)
+        return
     tasks = u["tasks"]
     text = f"📋 *مهام اليوم*\n{'✅' if tasks['ad'] else '❌'} شاهد إعلان\n{'✅' if tasks['used'] else '❌'} استخدم البوت"
     if tasks["ad"] and tasks["used"] and not tasks["bonus"]:
@@ -1141,9 +1401,11 @@ async def claim_bonus(update, context):
     await q.answer()
     uid = q.from_user.id
     u = check_daily_tasks(get_user(uid))
+    if u.get("banned", False):
+        await q.answer("⛔ أنت محظور", show_alert=True)
+        return
     if u["tasks"]["ad"] and u["tasks"]["used"] and not u["tasks"]["bonus"]:
         update_user(uid, {"pending_action": {"type": "claim_bonus"}})
-        # زرين للبونص
         web_app_button = KeyboardButton("📺 شاهد الإعلان واستلم البونص (موبايل)", web_app=WebAppInfo(url=BONUS_AD_URL))
         reply_markup = ReplyKeyboardMarkup(
             keyboard=[[web_app_button]],
@@ -1170,6 +1432,9 @@ async def withdraw_request(update, context):
     q = update.callback_query
     await q.answer()
     u = get_user(q.from_user.id)
+    if u.get("banned", False):
+        await q.answer("⛔ أنت محظور", show_alert=True)
+        return
     w = u.get("withdrawable_points", 0)
     if w < MIN_WITHDRAW_POINTS:
         need = MIN_WITHDRAW_POINTS - w
@@ -1189,7 +1454,7 @@ async def withdraw_request(update, context):
     await context.bot.send_message(ADMIN_ID, f"💰 طلب سحب: {q.from_user.first_name} - {amt}$", parse_mode="Markdown")
     await q.message.reply_text(f"💰 تم إرسال طلب {amt}$. سيتم مراجعته.", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏠 القائمة", callback_data="main_back")]]))
 
-# ========== دوال المتصدرين والأدمن (بدون تغيير) ==========
+# ========== دوال المتصدرين والأدمن القديمة ==========
 def get_leaderboard(limit=10):
     cursor = users_col.find({}, {"_id": 1, "points": 1, "withdrawable_points": 1, "level": 1}).sort("points", -1).limit(limit)
     res = []
@@ -1201,6 +1466,10 @@ def get_leaderboard(limit=10):
 async def leaderboard(update, context):
     q = update.callback_query
     await q.answer()
+    uid = q.from_user.id
+    if get_user(uid).get("banned", False):
+        await q.answer("⛔ أنت محظور", show_alert=True)
+        return
     data = get_leaderboard(10)
     if not data:
         text = "🏆 لا يوجد مستخدمون بعد."
@@ -1316,13 +1585,13 @@ async def admin_export(update, context):
     if q.from_user.id != ADMIN_ID: return
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(["ID","Name","Points","Withdrawable","Uses","Referrals","Withdrawn","Join Date","Ads","Badges","Level"])
+    writer.writerow(["ID","Name","Points","Withdrawable","Uses","Referrals","Withdrawn","Join Date","Ads","Badges","Level","Banned"])
     for user in users_col.find():
         try:
             name = (await context.bot.get_chat(int(user["_id"]))).first_name
         except:
             name = "Unknown"
-        writer.writerow([user["_id"], name, user.get("points",0), user.get("withdrawable_points",0), user.get("uses",0), user.get("referrals",0), user.get("has_withdrawn_before",False), user.get("last_task_date",""), user.get("total_ads_watched",0), ", ".join(user.get("badges",[])), user.get("level","مبتدئ")])
+        writer.writerow([user["_id"], name, user.get("points",0), user.get("withdrawable_points",0), user.get("uses",0), user.get("referrals",0), user.get("has_withdrawn_before",False), user.get("last_task_date",""), user.get("total_ads_watched",0), ", ".join(user.get("badges",[])), user.get("level","مبتدئ"), user.get("banned",False)])
     output.seek(0)
     await q.message.reply_document(document=io.BytesIO(output.getvalue().encode()), filename="users_export.csv", caption="📊 تصدير البيانات")
     await q.message.reply_text("✅ تم التصدير.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 رجوع", callback_data="admin_back")]]))
@@ -1335,7 +1604,7 @@ async def handle_nav(update, context):
     elif q.data in ("home", "new"):
         await main_back(update, context)
 
-# ========== المهام المجدولة (تم تعديل إشعار التحدي والمسابقة الشهرية) ==========
+# ========== المهام المجدولة ==========
 async def scheduled_tasks(app):
     while True:
         now = datetime.utcnow()
@@ -1344,6 +1613,7 @@ async def scheduled_tasks(app):
                 try:
                     uid = int(user["_id"])
                     u = get_user(uid)
+                    if u.get("banned", False): continue
                     await app.bot.send_message(uid, f"🔥 *تذكير يومي*\nStreak: {u.get('ad_streak',0)} يوم\nشاهد إعلانك الأول اليوم!", parse_mode="Markdown")
                 except:
                     pass
@@ -1352,6 +1622,7 @@ async def scheduled_tasks(app):
                 try:
                     uid = int(user["_id"])
                     u = get_user(uid)
+                    if u.get("banned", False): continue
                     if u.get("last_daily_report_date") != now.strftime("%Y-%m-%d"):
                         await app.bot.send_message(uid, f"📊 *تقرير يومي*\nرصيدك القابل للسحب: {u.get('withdrawable_points',0)}\nإعلانات اليوم السابق: {u.get('ad_watch_today',0)}", parse_mode="Markdown")
                         update_user(uid, {"last_daily_report_date": now.strftime("%Y-%m-%d")})
@@ -1370,7 +1641,10 @@ async def scheduled_tasks(app):
                     name = "مستخدم"
                 for user in users_col.find():
                     try:
-                        await app.bot.send_message(int(user["_id"]), f"🏆 *فوز اليوم*\nالمتصدر: {name} بـ {top['total']} نقطة!", parse_mode="Markdown")
+                        uid = int(user["_id"])
+                        u = get_user(uid)
+                        if u.get("banned", False): continue
+                        await app.bot.send_message(uid, f"🏆 *فوز اليوم*\nالمتصدر: {name} بـ {top['total']} نقطة!", parse_mode="Markdown")
                     except:
                         pass
         if now.weekday() == 0 and now.hour == 0 and now.minute == 0:
@@ -1400,7 +1674,6 @@ async def scheduled_tasks(app):
                     top_user = user["_id"]
             if top_user:
                 update_user(top_user, {"pending_action": {"type": "monthly_contest", "points": 50 * POINTS_PER_DOLLAR}})
-                # إرسال إشعار مع زر إعلان (زرين)
                 web_app_button = KeyboardButton("🏆 شاهد الإعلان لاستلام الجائزة (موبايل)", web_app=WebAppInfo(url=MONTHLY_AD_URL))
                 reply_markup = ReplyKeyboardMarkup(
                     keyboard=[[web_app_button]],
@@ -1436,7 +1709,6 @@ async def scheduled_tasks(app):
                 winner = u["_id"] if u_points > p_points else (partner_id if p_points > u_points else None)
                 if winner:
                     update_user(winner, {"pending_action": {"type": "challenge_reward", "points": 1000}})
-                    # إرسال إشعار للفائث بطلب مشاهدة إعلان (زرين)
                     web_app_button = KeyboardButton("🏆 شاهد الإعلان لاستلام جائزة التحدي (موبايل)", web_app=WebAppInfo(url=CHALLENGE_AD_URL))
                     reply_markup = ReplyKeyboardMarkup(
                         keyboard=[[web_app_button]],
@@ -1495,6 +1767,12 @@ def main():
     app.add_handler(CommandHandler("offer", admin_flash_offer))
     app.add_handler(CommandHandler("stopoffer", admin_stop_offer))
     app.add_handler(CommandHandler("createcoupon", create_coupon))
+    app.add_handler(CommandHandler("addpoints", admin_add_points))
+    app.add_handler(CommandHandler("removepoints", admin_remove_points))
+    app.add_handler(CommandHandler("ban", admin_ban))
+    app.add_handler(CommandHandler("unban", admin_unban))
+    app.add_handler(CommandHandler("listbanned", admin_list_banned))
+    app.add_handler(CommandHandler("userinfo", admin_user_info))
     app.add_handler(CallbackQueryHandler(content_menu, pattern="^content_menu$"))
     app.add_handler(CallbackQueryHandler(earn_menu, pattern="^earn_menu$"))
     app.add_handler(CallbackQueryHandler(account_menu, pattern="^account_menu$"))
@@ -1518,6 +1796,13 @@ def main():
     app.add_handler(CallbackQueryHandler(handle_nav, pattern="^(home|new|admin_back)$"))
     app.add_handler(CallbackQueryHandler(leaderboard, pattern="^leaderboard$"))
     app.add_handler(CallbackQueryHandler(withdraw_request, pattern="^withdraw$"))
+    # أزرار الأدمن الجديدة
+    app.add_handler(CallbackQueryHandler(admin_add_points_btn, pattern="^admin_add_points_btn$"))
+    app.add_handler(CallbackQueryHandler(admin_remove_points_btn, pattern="^admin_remove_points_btn$"))
+    app.add_handler(CallbackQueryHandler(admin_ban_btn, pattern="^admin_ban_btn$"))
+    app.add_handler(CallbackQueryHandler(admin_unban_btn, pattern="^admin_unban_btn$"))
+    app.add_handler(CallbackQueryHandler(admin_list_banned_btn, pattern="^admin_list_banned_btn$"))
+    app.add_handler(CallbackQueryHandler(admin_userinfo_btn, pattern="^admin_userinfo_btn$"))
 
     # المهام المجدولة
     loop = asyncio.get_event_loop()
