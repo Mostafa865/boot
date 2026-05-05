@@ -108,6 +108,7 @@ def get_user(user_id):
             "has_withdrawn_before": False, "first_withdrawal_date": None,
             "tasks": {"ad": False, "used": False, "bonus": False}, "last_task_date": today,
             "last_box_date": "", "ad_watch_today": 0, "last_ad_date": "", "ad_streak": 0,
+            "last_ad_time": 0,
             "ad_multiplier": 1.0, "last_ad_streak_date": "", "weekly_ad_count": 0,
             "last_contest_week": datetime.utcnow().strftime("%Y-%W"), "weekly_mission_claimed": False,
             "ambassador_badge": False, "last_daily_report_date": "", "total_ads_watched": 0,
@@ -974,6 +975,16 @@ async def start(update, context):
     else:
         await update.message.reply_text(f"👋 أهلاً *{name}*!\n✨ نقاط عادية: *{u['points']}*\n💰 نقاط قابلة للسحب: *{u.get('withdrawable_points',0)}*\n\n👇 اختر من القائمة:", parse_mode="Markdown", reply_markup=main_menu())
 
+
+def check_ad_spam(user_id, context):
+    last = context.user_data.get('last_ad_time', 0)
+    now = datetime.utcnow().timestamp()
+    if now - last < 10:
+        return False
+    context.user_data['last_ad_time'] = now
+    return True
+
+
 # ========== دوال المحتوى (AI) ==========
 async def handle_platform(update, context):
     q = update.callback_query
@@ -1068,13 +1079,14 @@ async def handle_web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE
         if u.get("banned", False):
             await update.message.reply_text("⛔ أنت محظور.")
             return
-                         # فحص السرعة (يمنع الإعلانات المتكررة بسرعة)
-        last_ad_time = context.user_data.get('last_ad_time', 0)
-        now = datetime.utcnow().timestamp()
-        if now - last_ad_time < 10:
-            await update.message.reply_text("⚠️ أنت تشاهد إعلانات بسرعة كبيرة. انتظر 10 ثوانٍ ثم حاول مرة أخرى.")
+        # فحص السرعة
+        now_ts = datetime.utcnow().timestamp()
+        last_ad_ts = u.get("last_ad_time", 0)
+        if now_ts - last_ad_ts < 10:
+            await update.message.reply_text("⚠️ انتظر 10 ثوانٍ بين الإعلانات")
             return
-        context.user_data['last_ad_time'] = now
+        update_user(uid, {"last_ad_time": now_ts})
+
       
         today = datetime.utcnow().strftime("%Y-%m-%d")
         if u.get("last_ad_date") != today:
