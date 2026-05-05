@@ -1399,17 +1399,28 @@ async def withdraw_request(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if u.get("banned", False):
         await q.answer("⛔ أنت محظور", show_alert=True)
         return
+
     w = u.get("withdrawable_points", 0)
     if w < MIN_WITHDRAW_POINTS:
         need = MIN_WITHDRAW_POINTS - w
         await q.message.reply_text(f"💰 *السحب*\nرصيدك القابل للسحب: {w} نقطة\nتحتاج {need} نقطة إضافية للحد الأدنى ({MIN_WITHDRAW_POINTS} نقطة).", parse_mode="Markdown")
         return
+
     max_usd = w // POINTS_PER_DOLLAR
+    keyboard = [
+        [InlineKeyboardButton("3$", callback_data="withdraw_3"),
+         InlineKeyboardButton("5$", callback_data="withdraw_5"),
+         InlineKeyboardButton("10$", callback_data="withdraw_10")],
+        [InlineKeyboardButton("20$", callback_data="withdraw_20"),
+         InlineKeyboardButton("50$", callback_data="withdraw_50"),
+         InlineKeyboardButton("مبلغ مخصص 💸", callback_data="withdraw_custom")]
+    ]
     await q.message.reply_text(
-        f"💵 *كم تريد سحب؟*\nالحد الأدنى: `3` دولار\nالحد الأقصى المتاح: `{max_usd}` دولار\n\nأرسل المبلغ (رقم فقط):",
-        parse_mode="Markdown"
+        f"💵 *اختر المبلغ المراد سحبه*\nالحد الأدنى: 3$\nأقصى مبلغ متاح: {max_usd}$",
+        parse_mode="Markdown",
+        reply_markup=InlineKeyboardMarkup(keyboard)
     )
-    context.user_data['awaiting_withdraw_amount'] = True
+
 
 
 
@@ -1953,15 +1964,27 @@ async def withdraw_details(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data.pop('withdraw_amount_usd', None)
         return
 
+    details = update.message.text.strip()
+    
+    # التحقق من صحة بيانات الدفع الأساسية (اختياري)
+    if "فودافون" in details.lower() or "vodafone" in details.lower():
+        # يمكن إضافة تحقق لرقم الهاتف مثلاً
+        if len(details) < 10:
+            await update.message.reply_text("❌ يرجى إدخال رقم هاتف صالح مع طريقة الدفع.")
+            return
+    elif "انستا" in details.lower() or "instapay" in details.lower():
+        if "@" not in details:
+            await update.message.reply_text("❌ يرجى إدخال بريد إلكتروني صالح لـ InstaPay.")
+            return
+    elif "paypal" in details.lower():
+        if "@" not in details:
+            await update.message.reply_text("❌ يرجى إدخال بريد إلكتروني صالح لحساب PayPal.")
+            return
+
     amount_usd = context.user_data.get('withdraw_amount_usd')
     if not amount_usd:
         await update.message.reply_text("❌ حدث خطأ: لم يتم تحديد المبلغ. ابدأ من جديد.")
         context.user_data.clear()
-        return
-
-    details = update.message.text.strip()
-    if len(details) < 5:
-        await update.message.reply_text("❌ يرجى إدخال تفاصيل صحيحة (طريقة الدفع والمعلومات).")
         return
 
     required_points = int(amount_usd * POINTS_PER_DOLLAR)
@@ -1988,16 +2011,96 @@ async def withdraw_details(update: Update, context: ContextTypes.DEFAULT_TYPE):
     withdrawals_col.insert_one(req)
     await log_action(uid, "طلب سحب يدوي (مبلغ محدد)", uid, f"{amount_usd}$ - {details}")
 
-    # إشعار للأدمن
+    # إشعار للأدمن مع تفاصيل الطريقة
     await context.bot.send_message(
         ADMIN_ID,
-        f"💰 *طلب سحب جديد*\n👤 المستخدم: {update.effective_user.first_name} (ID: `{uid}`)\n💵 المبلغ: {amount_usd}$\n📝 التفاصيل: {details}\n📅 الوقت: {datetime.utcnow().strftime('%Y-%m-%d %H:%M')}",
+        f"💰 *طلب سحب جديد*\n"
+        f"👤 المستخدم: {update.effective_user.first_name} (ID: `{uid}`)\n"
+        f"💵 المبلغ: {amount_usd}$\n"
+        f"📝 طريقة الدفع: {details}\n"
+        f"📅 الوقت: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}",
         parse_mode="Markdown"
     )
-    await update.message.reply_text(f"✅ تم طلب سحب {amount_usd}$ بنجاح.\nسيتم مراجعة طلبك وإرسال المبلغ خلال 48 ساعة.", parse_mode="Markdown")
-    # تنظيف البيانات المؤقتة
+    await update.message.reply_text(
+        f"✅ تم طلب سحب {amount_usd}$ بنجاح.\n"
+        f"سيتم مراجعة طلبك خلال 48 ساعة، وستصلك رسالة عند القبول أو الرفض.",
+        parse_mode="Markdown"
+    )
     context.user_data.pop('awaiting_withdraw_details', None)
     context.user_data.pop('withdraw_amount_usd', None)
+
+
+
+async def withdraw_amount_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+    uid = q.from_user.id
+    user = get_user(uid)
+    if user.get("banned", False):
+        await q.answer("⛔ أنت محظور", show_alert=True)
+        return
+
+    data = q.data
+    amount_usd = None
+    if data == "withdraw_3":
+        amount_usd = 3
+    elif data == "withdraw_5":
+        amount_usd = 5
+    elif data == "withdraw_10":
+        amount_usd = 10
+    elif data == "withdraw_20":
+        amount_usd = 20
+    elif data == "withdraw_50":
+        amount_usd = 50
+    elif data == "withdraw_custom":
+        await q.message.reply_text("✏️ أرسل المبلغ الذي تريد سحبه (بالدولار)، بحيث يكون أكبر من 3 وأقل من 1000:")
+        context.user_data['awaiting_custom_amount'] = True
+        return
+
+    if amount_usd:
+        required_points = int(amount_usd * POINTS_PER_DOLLAR)
+        if user.get("withdrawable_points", 0) < required_points:
+            await q.message.reply_text(f"❌ رصيدك لا يكفي لسحب {amount_usd}$. حاول اختيار مبلغ أقل.")
+            return
+        context.user_data['withdraw_amount_usd'] = amount_usd
+        await q.message.reply_text(
+            "📝 *تفاصيل الدفع*\nأرسل الآن طريقة الدفع ومعلوماتك على سطر واحد بالشكل التالي:\n\n"
+            "🔹 `فودافون كاش, 01012345678`\n"
+            "🔹 `انستا باي, user@example.com`\n"
+            "🔹 `PayPal, your-email@example.com`\n"
+            "🔹 `تحويل بنكي, IBAN: ...`",
+            parse_mode="Markdown"
+        )
+        context.user_data['awaiting_withdraw_details'] = True
+
+
+
+
+async def custom_amount_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.user_data.get('awaiting_custom_amount'):
+        return
+    try:
+        amount_usd = float(update.message.text.strip())
+        if amount_usd < 3:
+            await update.message.reply_text("❌ الحد الأدنى للسحب هو 3 دولار.")
+            return
+        if amount_usd > 1000:
+            await update.message.reply_text("❌ الحد الأقصى للسحب هو 1000 دولار في المرة الواحدة للأمان.")
+            return
+        required_points = int(amount_usd * POINTS_PER_DOLLAR)
+        user = get_user(update.effective_user.id)
+        if user.get("withdrawable_points", 0) < required_points:
+            await update.message.reply_text(f"❌ رصيدك لا يكفي. لديك {user.get('withdrawable_points', 0) // POINTS_PER_DOLLAR}$ متاح.")
+            return
+        context.user_data['withdraw_amount_usd'] = amount_usd
+        context.user_data['awaiting_custom_amount'] = False
+        context.user_data['awaiting_withdraw_details'] = True
+        await update.message.reply_text(
+            "📝 *تفاصيل الدفع*\nأرسل الآن طريقة الدفع ومعلوماتك:",
+            parse_mode="Markdown"
+        )
+    except ValueError:
+        await update.message.reply_text("❌ يرجى إدخال رقم صحيح (مثال: 15).")
 
 
 
@@ -2051,6 +2154,7 @@ def main():
         ("^admin_broadcast$", admin_broadcast_start), ("^redeem_coupon$", redeem_coupon),
         ("^convert_points$", convert_points), ("^set_wallet_btn$", set_wallet_btn),
         ("^auto_withdraw$", auto_withdraw),
+        ("^withdraw_(3|5|10|20|50|custom)$", withdraw_amount_callback),
 
     ]
     for pattern, handler in callbacks:
@@ -2058,6 +2162,7 @@ def main():
         app.add_handler(CallbackQueryHandler(test_callback, pattern="^test_audit$"))
         app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_all_text))
         app.add_handler(CallbackQueryHandler(admin_list_banned, pattern="^admin_list_banned_btn$"))
+        app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, custom_amount_handler))
 
     loop = asyncio.get_event_loop()
     loop.create_task(scheduled_tasks(app))
