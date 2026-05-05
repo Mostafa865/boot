@@ -539,8 +539,6 @@ async def account_menu(update, context):
             f"💰 التحويل: {POINTS_PER_DOLLAR} نقطة = $1\n🏧 حد السحب: {MIN_WITHDRAW_POINTS} نقطة (${MIN_WITHDRAW_POINTS//POINTS_PER_DOLLAR})\n\n"
             f"🔄 تحويل النقاط العادية إلى قابلة للسحب:\n  • نسبة التحويل: {CONVERSION_RATE}% (100 نقطة عادية → {CONVERSION_RATE} نقطة قابلة للسحب)\n  • الحد اليومي: {MAX_DAILY_CONVERSION} نقطة عادية")
     kb = [[InlineKeyboardButton("🔄 تحويل نقاطي", callback_data="convert_points"), InlineKeyboardButton("💰 سحب النقاط", callback_data="withdraw")],
-          [InlineKeyboardButton("🔗 ربط محفظة USDT", callback_data="set_wallet_btn"),
-           InlineKeyboardButton("💰 سحب تلقائي", callback_data="auto_withdraw")],
           [InlineKeyboardButton("🔙 رجوع", callback_data="main_back")]]
     await q.edit_message_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(kb))
 
