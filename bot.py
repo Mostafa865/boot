@@ -1770,8 +1770,8 @@ def main():
     ]
     for pattern, handler in callbacks:
         app.add_handler(CallbackQueryHandler(handler, pattern=pattern))
-app.add_handler(CallbackQueryHandler(test_callback, pattern="^test_audit$"))
-app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_all_text))
+        app.add_handler(CallbackQueryHandler(test_callback, pattern="^test_audit$"))
+        app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_all_text))
 
     loop = asyncio.get_event_loop()
     loop.create_task(scheduled_tasks(app))
