@@ -1697,22 +1697,25 @@ async def scheduled_tasks(app):
                 update_user(partner_id, {"challenge_active": None, "challenge_points": 0, "last_challenge_reset": now.isoformat()})
 
         await asyncio.sleep(60)
+      
+
+async def handle_all_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if context.user_data.get('awaiting_broadcast'):
+        await admin_broadcast_send(update, context)
+    elif context.user_data.get('awaiting_conversion'):
+        await process_conversion(update, context)
+    elif context.user_data.get('awaiting_coupon'):
+        await process_coupon(update, context)
+    elif context.user_data.get('awaiting_challenge'):
+        await challenge_target(update, context)
+      
 
 # ========== تشغيل البوت ==========
 def main():
     app = Application.builder().token(TELEGRAM_TOKEN).build()
-    # معالج WebApp
+
     app.add_handler(MessageHandler(filters.StatusUpdate.WEB_APP_DATA, handle_web_app_data))
-    # تحويل النقاط
-    app.add_handler(CallbackQueryHandler(convert_points, pattern="^convert_points$"))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, process_conversion))
-    # كوبونات
-    app.add_handler(CallbackQueryHandler(redeem_coupon, pattern="^redeem_coupon$"))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, process_coupon))
-    # محادثة البث الجماعي المنفصلة
-    app.add_handler(CallbackQueryHandler(admin_broadcast_start, pattern="^admin_broadcast$"))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.User(ADMIN_ID), admin_broadcast_send))
-    # المحادثات الرئيسية للمحتوى
+
     main_conv = ConversationHandler(
         entry_points=[CallbackQueryHandler(handle_platform, pattern="^(facebook|instagram|twitter|linkedin|email|ad|article|ideas)$"),
                       CallbackQueryHandler(weekly, pattern="^weekly$")],
@@ -1722,9 +1725,7 @@ def main():
         fallbacks=[CommandHandler("start", start)], per_chat=False, name="main_conv"
     )
     app.add_handler(main_conv)
-    # معالج تحديات الأصدقاء
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, challenge_target))
-    # أوامر الأدمن النصية
+
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("offer", admin_flash_offer))
     app.add_handler(CommandHandler("stopoffer", admin_stop_offer))
@@ -1737,7 +1738,7 @@ def main():
     app.add_handler(CommandHandler("userinfo", admin_user_info))
     app.add_handler(CommandHandler("start_challenge", start_global_challenge))
     app.add_handler(CommandHandler("end_challenge", end_global_challenge))
-    # معالجات الأزرار
+
     callbacks = [
         ("^content_menu$", content_menu), ("^earn_menu$", earn_menu), ("^account_menu$", account_menu),
         ("^main_back$", main_back), ("^help$", help_callback), ("^special_offers$", special_offers),
@@ -1751,15 +1752,20 @@ def main():
         ("^admin_churn$", admin_churn_analysis), ("^churn_remind_", churn_remind), ("^churn_gift_", churn_gift),
         ("^admin_add_points_btn$", admin_add_points_btn), ("^admin_remove_points_btn$", admin_remove_points_btn),
         ("^admin_ban_btn$", admin_ban_btn), ("^admin_unban_btn$", admin_unban_btn),
-        ("^admin_list_banned_btn$", admin_list_banned_btn), ("^admin_userinfo_btn$", admin_userinfo_btn)
+        ("^admin_list_banned_btn$", admin_list_banned_btn), ("^admin_userinfo_btn$", admin_userinfo_btn),
+        ("^admin_broadcast$", admin_broadcast_start), ("^redeem_coupon$", redeem_coupon),
+        ("^convert_points$", convert_points),
     ]
     for pattern, handler in callbacks:
         app.add_handler(CallbackQueryHandler(handler, pattern=pattern))
-    # المهام المجدولة
+
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_all_text))
+
     loop = asyncio.get_event_loop()
     loop.create_task(scheduled_tasks(app))
     print("✅ Bot started successfully!")
     app.run_polling()
+
 
 if __name__ == "__main__":
     main()
