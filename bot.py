@@ -1119,10 +1119,16 @@ async def handle_web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE
             return
 
           
-               if now_ts - last_ad_ts < 10:
+        # فحص السرعة
+        now_ts = datetime.utcnow().timestamp()
+        last_ad_ts = u.get("last_ad_time", 0)
+        if now_ts - last_ad_ts < 10:
             await update.message.reply_text("⚠️ انتظر 10 ثوانٍ بين الإعلانات")
             await log_cheat(uid, "speed_violation", f"فرق {now_ts - last_ad_ts:.1f} ثانية")
             return
+        update_user(uid, {"last_ad_time": now_ts})
+
+      
       
         today = datetime.utcnow().strftime("%Y-%m-%d")
         if u.get("last_ad_date") != today:
