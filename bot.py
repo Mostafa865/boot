@@ -209,17 +209,6 @@ def can_add_commission(user_id, amount):
 # ========== سجل التدقيق ==========
 async def log_action(admin_id: int, action_type: str, target_user_id: int = None, details: str = ""):
     try:
-        doc = {"timestamp": datetime.utcnow(), "admin_id": admin_id, "action_type": action_type,
-               "target_user_id": target_user_id, "details": details}
-        result = audit_col.insert_one(doc)
-        print(f"✅ [AUDIT] تم تسجيل الإجراء '{action_type}' (ID: {result.inserted_id})")
-    except Exception as e:
-        print(f"❌ [AUDIT] فشل تسجيل الإجراء '{action_type}': {e}")
-        traceback.print_exc()
-
-
-async def log_action(admin_id: int, action_type: str, target_user_id: int = None, details: str = ""):
-    try:
         audit_col.insert_one({
             "timestamp": datetime.utcnow(),
             "admin_id": admin_id,
@@ -232,34 +221,24 @@ async def log_action(admin_id: int, action_type: str, target_user_id: int = None
         print(f"❌ خطأ في التسجيل: {e}")
 
 async def admin_audit_log(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    q = update.callback_query
-    await q.answer()
-    if q.from_user.id != ADMIN_ID:
-        await q.answer("⛔ غير مصرح.", show_alert=True)
+    query = update.callback_query
+    await query.answer()
+    if query.from_user.id != ADMIN_ID:
+        await query.answer("⛔ غير مصرح.", show_alert=True)
         return
-    page = int(q.data.split("_")[1]) if len(q.data.split("_")) > 1 else 0
-    limit = 10
-    skip = page * limit
-    total = audit_col.count_documents({})
-    logs = audit_col.find({}).sort("timestamp", -1).skip(skip).limit(limit)
-    text = "📋 *سجل التدقيق*\n\n"
+    # جلب آخر 10 سجلات
+    logs = list(audit_col.find({}).sort("timestamp", -1).limit(10))
+    if not logs:
+        await query.message.reply_text("📋 لا توجد إجراءات مسجلة بعد.")
+        return
+    text = "📋 *آخر الإجراءات*\n\n"
     for log in logs:
         time_str = log["timestamp"].strftime("%Y-%m-%d %H:%M")
-        admin = log["admin_id"]
         action = log["action_type"]
-        target = f" → {log['target_user_id']}" if log.get("target_user_id") else ""
-        details = f" ({log['details']})" if log.get("details") else ""
+        target = f" (← {log['target_user_id']})" if log.get("target_user_id") else ""
+        details = f": {log['details']}" if log.get("details") else ""
         text += f"• `{time_str}`: {action}{target}{details}\n"
-    if not logs:
-        text += "لا توجد إجراءات مسجلة بعد."
-    kb = []
-    if page > 0:
-        kb.append(InlineKeyboardButton("⬅️ السابق", callback_data=f"admin_audit_log_{page-1}"))
-    if (page + 1) * limit < total:
-        kb.append(InlineKeyboardButton("التالي ➡️", callback_data=f"admin_audit_log_{page+1}"))
-    kb.append(InlineKeyboardButton("🔙 رجوع", callback_data="admin_back"))
-    await q.message.reply_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([kb]))
-
+    await query.message.reply_text(text, parse_mode="Markdown")
 # ========== تحليل التسرب ==========
 async def get_inactive_users(days=7):
     cutoff = datetime.utcnow() - timedelta(days=days)
