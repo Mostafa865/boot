@@ -1,4 +1,4 @@
-# v20.1 - النسخة النهائية مع لوحة أدمن متقدمة وكاملة
+# v21.0 - النسخة النهائية مع التحديات الجماعية العالمية
 import logging, random, csv, io, asyncio
 from datetime import datetime, timedelta
 from bson.objectid import ObjectId
@@ -70,6 +70,7 @@ withdrawals_col = db["withdrawals"]
 offers_col = db["flash_offers"]
 challenges_col = db["challenges"]
 coupons_col = db["coupons"]
+global_challenges_col = db["global_challenges"]   # جديد
 
 client = openai.OpenAI(base_url="https://openrouter.ai/api/v1", api_key=OPENROUTER_API_KEY)
 
@@ -126,7 +127,10 @@ def get_user(user_id):
             "highest_total_points": 300,
             "wheel_spins_today": 0,
             "last_wheel_date": "",
-            "banned": False
+            "banned": False,
+            # حقول التحدي العالمي
+            "global_challenge_ads": 0,
+            "global_challenge_reward_claimed": False
         }
         users_col.insert_one(user)
     else:
@@ -137,11 +141,11 @@ def get_user(user_id):
                   "weekly_mission_claimed","ambassador_badge","last_daily_report_date","total_ads_watched","badges",
                   "pending_action","early_bird_rewarded","early_bird_notified","challenge_active","challenge_points","last_challenge_reset",
                   "daily_converted","level","level_reward_claimed","pending_level_upgrade","highest_total_points",
-                  "wheel_spins_today","last_wheel_date","banned"]
+                  "wheel_spins_today","last_wheel_date","banned","global_challenge_ads","global_challenge_reward_claimed"]
         for field in fields:
             if field not in user:
-                if field in ["wheel_spins_today","last_wheel_date","banned"]:
-                    user[field] = 0 if field=="wheel_spins_today" else ("" if field=="last_wheel_date" else False)
+                if field in ["wheel_spins_today","last_wheel_date","banned","global_challenge_ads","global_challenge_reward_claimed"]:
+                    user[field] = 0 if field in ["wheel_spins_today","global_challenge_ads"] else ("" if field=="last_wheel_date" else False)
                 elif field in ["level","level_reward_claimed","pending_level_upgrade","highest_total_points"]:
                     user[field] = "مبتدئ" if field=="level" else (False if field=="level_reward_claimed" else (None if field=="pending_level_upgrade" else 300))
                 else:
@@ -542,7 +546,8 @@ async def earn_menu(update, context):
          InlineKeyboardButton("⚔️ تحدي صديق", callback_data="challenge_friend")],
         [InlineKeyboardButton("🎟️ كود خصم", callback_data="redeem_coupon"),
          InlineKeyboardButton("🎁 عروض خاصة", callback_data="special_offers")],
-        [InlineKeyboardButton("🔙 رجوع", callback_data="main_back")]
+        [InlineKeyboardButton("🌍 التحدي العالمي", callback_data="global_challenge"),   # جديد
+         InlineKeyboardButton("🔙 رجوع", callback_data="main_back")]
     ]
     await q.edit_message_text("💰 *كسب النقاط*\nاختر طريقة:", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(kb))
 
@@ -621,7 +626,8 @@ async def help_callback(update, context):
             f"1️⃣3️⃣ مسابقة شهرية: أعلى رصيد يحصل على 50$.\n"
             f"1️⃣4️⃣ تحويل النقاط: حوِّل نقاطك العادية إلى نقابلة للسحب بنسبة {CONVERSION_RATE}% (حد {MAX_DAILY_CONVERSION} نقطة عادية يومياً).\n"
             f"1️⃣5️⃣ المستويات: تترقى إلى مستويات أعلى عند جمع النقاط ومشاهدة إعلانات محددة. كل مستوى يمنح مضاعفاً أكبر ومكافآت.\n"
-            f"1️⃣6️⃣ كوبونات الخصم: استخدم أكواد خصم للحصول على نقاط إضافية (تتطلب إعلاناً).")
+            f"1️⃣6️⃣ كوبونات الخصم: استخدم أكواد خصم للحصول على نقاط إضافية (تتطلب إعلاناً).\n"
+            f"1️⃣7️⃣ التحدي العالمي: يعلن الأدمن تحدياً جماعياً (مثلاً مليون إعلان في أسبوع)، وتوزع الجوائز حسب المشاركة.")
     kb = [[InlineKeyboardButton("🔙 رجوع", callback_data="main_back")]]
     await q.edit_message_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(kb))
 
@@ -691,9 +697,139 @@ def admin_menu():
          InlineKeyboardButton("🔍 معلومات مستخدم", callback_data="admin_userinfo_btn")],
         [InlineKeyboardButton("💰 طلبات السحب", callback_data="admin_withdrawals")],
         [InlineKeyboardButton("📢 رسالة جماعية", callback_data="admin_broadcast")],
+        [InlineKeyboardButton("🌍 إدارة التحدي العالمي", callback_data="admin_global_challenge")],
         [InlineKeyboardButton("📁 تصدير Excel", callback_data="admin_export")]
     ]
     return InlineKeyboardMarkup(kb)
+
+# ========== التحدي العالمي (Global Challenge) ==========
+async def get_active_global_challenge():
+    """إرجاع التحدي النشط (إن وجد)"""
+    return global_challenges_col.find_one({"active": True})
+
+async def start_global_challenge(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("⛔ غير مصرح.")
+        return
+    try:
+        target_ads = int(context.args[0])
+        prize_pool = int(context.args[1])
+        days = int(context.args[2]) if len(context.args) > 2 else 7
+        end_date = datetime.utcnow() + timedelta(days=days)
+        # إنهاء أي تحدٍ قديم وبدء تحدٍ جديد
+        global_challenges_col.update_many({}, {"$set": {"active": False}})
+        challenge = {
+            "active": True,
+            "target_ads": target_ads,
+            "current_ads": 0,
+            "prize_pool": prize_pool,
+            "start_date": datetime.utcnow(),
+            "end_date": end_date,
+            "created_by": ADMIN_ID
+        }
+        global_challenges_col.insert_one(challenge)
+        # إعادة ضبط إحصاءات المستخدمين (اختياري: يمكن مسح global_challenge_ads لكل المستخدمين)
+        users_col.update_many({}, {"$set": {"global_challenge_ads": 0, "global_challenge_reward_claimed": False}})
+        await update.message.reply_text(
+            f"✅ *تم بدء التحدي العالمي!*\n"
+            f"🎯 الهدف: {target_ads} إعلان جماعياً\n"
+            f"🏆 الجائزة الكلية: {prize_pool} نقطة قابلة للسحب\n"
+            f"⏳ المدة: {days} يوم (تنتهي {end_date.strftime('%Y-%m-%d %H:%M UTC')})\n\n"
+            f"شارك مع الجميع لتحقيق الهدف واحصل على حصتك من الجائزة!",
+            parse_mode="Markdown"
+        )
+    except Exception as e:
+        await update.message.reply_text(f"❌ خطأ: استخدم `/start_challenge <هدف_الإعلانات> <جائزة_كلية> [أيام]`\n{str(e)}")
+
+async def end_global_challenge(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("⛔ غير مصرح.")
+        return
+    await process_global_challenge_end(context.bot, force=True)
+    await update.message.reply_text("✅ تم إنهاء التحدي العالمي وتوزيع الجوائز (إن تحقق الهدف).")
+
+async def global_challenge_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+    uid = q.from_user.id
+    user = get_user(uid)
+    if user.get("banned", False):
+        await q.answer("⛔ أنت محظور", show_alert=True)
+        return
+    challenge = await get_active_global_challenge()
+    if not challenge:
+        await q.message.reply_text("🌍 *لا يوجد تحدٍ عالمي نشط حالياً.*\nانتظر إعلان الأدمن.", parse_mode="Markdown")
+        return
+    current_ads = challenge["current_ads"]
+    target = challenge["target_ads"]
+    percent = (current_ads / target) * 100 if target else 0
+    remaining_seconds = (challenge["end_date"] - datetime.utcnow()).total_seconds()
+    days_left = int(remaining_seconds // 86400)
+    hours_left = int((remaining_seconds % 86400) // 3600)
+    time_left = f"{days_left} يوماً و {hours_left} ساعة" if days_left > 0 else f"{hours_left} ساعة"
+    # جلب أفضل 10 مساهمين
+    top_users = users_col.find({"global_challenge_ads": {"$gt": 0}}).sort("global_challenge_ads", -1).limit(10)
+    leaderboard_text = ""
+    rank = 1
+    for u in top_users:
+        try:
+            name = (await context.bot.get_chat(int(u["_id"]))).first_name
+        except:
+            name = f"مستخدم {u['_id'][-4:]}"
+        leaderboard_text += f"{rank}. {name} — {u['global_challenge_ads']} إعلان\n"
+        rank += 1
+    text = (
+        f"🌍 *التحدي العالمي*\n\n"
+        f"🎯 التقدم: {current_ads} / {target} إعلان ({percent:.1f}%)\n"
+        f"🏆 الجائزة الكلية: {challenge['prize_pool']} نقطة\n"
+        f"⏳ الوقت المتبقي: {time_left}\n\n"
+        f"🏅 *أفضل المساهمين:*\n{leaderboard_text if leaderboard_text else 'لا توجد مساهمات بعد.'}\n\n"
+        f"كل إعلان تشاهده يُضاف إلى الرصيد الجماعي. عند تحقيق الهدف، تُوزع الجائزة حسب نسبة مشاركتك!"
+    )
+    kb = [[InlineKeyboardButton("🔙 رجوع", callback_data="earn_menu")]]
+    await q.message.reply_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(kb))
+
+async def process_global_challenge_end(bot, force=False):
+    """توزيع الجوائز عند انتهاء المدة (أو استدعاء يدوي)"""
+    challenge = await get_active_global_challenge()
+    if not challenge:
+        return
+    if not force and datetime.utcnow() < challenge["end_date"]:
+        return
+    # إلغاء التحدي النشط
+    global_challenges_col.update_one({"_id": challenge["_id"]}, {"$set": {"active": False}})
+    if challenge["current_ads"] >= challenge["target_ads"]:
+        # جمع جميع المساهمين
+        total_ads = challenge["current_ads"]
+        prize_pool = challenge["prize_pool"]
+        cursor = users_col.find({"global_challenge_ads": {"$gt": 0}})
+        for user in cursor:
+            ads = user["global_challenge_ads"]
+            reward = int(prize_pool * ads / total_ads)
+            if reward > 0:
+                # منح النقاط القابلة للسحب
+                current_w = user.get("withdrawable_points", 0)
+                update_user(user["_id"], {"withdrawable_points": current_w + reward, "global_challenge_reward_claimed": True})
+                try:
+                    await bot.send_message(int(user["_id"]), f"🏆 *التحدي العالمي*\nلقد حققنا الهدف! مساهمتك {ads} إعلان تمنحك *{reward} نقطة قابلة للسحب* كجائزة! 🎉", parse_mode="Markdown")
+                except:
+                    pass
+        await bot.send_message(ADMIN_ID, f"✅ تم توزيع جوائز التحدي العالمي بنجاح. إجمالي المساهمين: {users_col.count_documents({'global_challenge_ads': {'$gt': 0}})}")
+    else:
+        await bot.send_message(ADMIN_ID, "⚠️ انتهى التحدي العالمي دون تحقيق الهدف. لم يتم توزيع الجوائز.")
+    # إعادة ضبط حقول التحدي العالمي للمستخدمين
+    users_col.update_many({}, {"$set": {"global_challenge_ads": 0, "global_challenge_reward_claimed": False}})
+
+async def admin_global_challenge_btn(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+    text = (
+        "🌍 *إدارة التحدي العالمي*\n\n"
+        "• `/start_challenge <هدف> <جائزة> [أيام]` – بدء تحدٍ جديد\n"
+        "• `/end_challenge` – إنهاء التحدي الحالي وتوزيع الجوائز\n"
+        "مثال: `/start_challenge 1000000 50000 7`"
+    )
+    await q.message.reply_text(text, parse_mode="Markdown")
 
 # ========== أوامر الأدمن الجديدة ==========
 async def admin_add_points(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -831,7 +967,8 @@ async def admin_user_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"• إجمالي الإعلانات: {user.get('total_ads_watched',0)}\n"
             f"• الدعوات المباشرة: {user.get('referrals',0)}\n"
             f"• الشارات: {', '.join(user.get('badges',[])) or 'لا توجد'}\n"
-            f"• الحالة: {banned_status}"
+            f"• الحالة: {banned_status}\n"
+            f"• مساهمة التحدي العالمي: {user.get('global_challenge_ads',0)} إعلان"
         )
         await update.message.reply_text(text, parse_mode="Markdown")
     except Exception as e:
@@ -1168,6 +1305,12 @@ async def handle_web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE
                     update_user(rid, {"withdrawable_points": ref["withdrawable_points"] + comm, "total_commission_earned": ref.get("total_commission_earned", 0) + comm})
                     try: await context.bot.send_message(rid, f"🎁 عمولة إحالة: +{comm} نقطة!", parse_mode="Markdown")
                     except: pass
+        # تحديث التحدي العالمي
+        challenge = await get_active_global_challenge()
+        if challenge:
+            # زيادة العداد الجماعي والمستخدم
+            global_challenges_col.update_one({"_id": challenge["_id"]}, {"$inc": {"current_ads": 1}})
+            update_user(uid, {"global_challenge_ads": u.get("global_challenge_ads", 0) + 1})
         u2 = check_daily_tasks(get_user(uid))
         u2["tasks"]["ad"] = True
         update_user(uid, {"tasks": u2["tasks"]})
@@ -1585,13 +1728,13 @@ async def admin_export(update, context):
     if q.from_user.id != ADMIN_ID: return
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(["ID","Name","Points","Withdrawable","Uses","Referrals","Withdrawn","Join Date","Ads","Badges","Level","Banned"])
+    writer.writerow(["ID","Name","Points","Withdrawable","Uses","Referrals","Withdrawn","Join Date","Ads","Badges","Level","Banned","GlobalChallengeAds"])
     for user in users_col.find():
         try:
             name = (await context.bot.get_chat(int(user["_id"]))).first_name
         except:
             name = "Unknown"
-        writer.writerow([user["_id"], name, user.get("points",0), user.get("withdrawable_points",0), user.get("uses",0), user.get("referrals",0), user.get("has_withdrawn_before",False), user.get("last_task_date",""), user.get("total_ads_watched",0), ", ".join(user.get("badges",[])), user.get("level","مبتدئ"), user.get("banned",False)])
+        writer.writerow([user["_id"], name, user.get("points",0), user.get("withdrawable_points",0), user.get("uses",0), user.get("referrals",0), user.get("has_withdrawn_before",False), user.get("last_task_date",""), user.get("total_ads_watched",0), ", ".join(user.get("badges",[])), user.get("level","مبتدئ"), user.get("banned",False), user.get("global_challenge_ads",0)])
     output.seek(0)
     await q.message.reply_document(document=io.BytesIO(output.getvalue().encode()), filename="users_export.csv", caption="📊 تصدير البيانات")
     await q.message.reply_text("✅ تم التصدير.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 رجوع", callback_data="admin_back")]]))
@@ -1608,6 +1751,10 @@ async def handle_nav(update, context):
 async def scheduled_tasks(app):
     while True:
         now = datetime.utcnow()
+        # التحقق من انتهاء التحدي العالمي
+        challenge = await get_active_global_challenge()
+        if challenge and now >= challenge["end_date"]:
+            await process_global_challenge_end(app.bot, force=True)
         if now.hour == 9 and now.minute == 0:
             for user in users_col.find():
                 try:
@@ -1773,6 +1920,8 @@ def main():
     app.add_handler(CommandHandler("unban", admin_unban))
     app.add_handler(CommandHandler("listbanned", admin_list_banned))
     app.add_handler(CommandHandler("userinfo", admin_user_info))
+    app.add_handler(CommandHandler("start_challenge", start_global_challenge))
+    app.add_handler(CommandHandler("end_challenge", end_global_challenge))
     app.add_handler(CallbackQueryHandler(content_menu, pattern="^content_menu$"))
     app.add_handler(CallbackQueryHandler(earn_menu, pattern="^earn_menu$"))
     app.add_handler(CallbackQueryHandler(account_menu, pattern="^account_menu$"))
@@ -1796,6 +1945,8 @@ def main():
     app.add_handler(CallbackQueryHandler(handle_nav, pattern="^(home|new|admin_back)$"))
     app.add_handler(CallbackQueryHandler(leaderboard, pattern="^leaderboard$"))
     app.add_handler(CallbackQueryHandler(withdraw_request, pattern="^withdraw$"))
+    app.add_handler(CallbackQueryHandler(global_challenge_status, pattern="^global_challenge$"))
+    app.add_handler(CallbackQueryHandler(admin_global_challenge_btn, pattern="^admin_global_challenge$"))
     # أزرار الأدمن الجديدة
     app.add_handler(CallbackQueryHandler(admin_add_points_btn, pattern="^admin_add_points_btn$"))
     app.add_handler(CallbackQueryHandler(admin_remove_points_btn, pattern="^admin_remove_points_btn$"))
