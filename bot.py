@@ -1,4 +1,4 @@
-# v19.0 - النسخة النهائية مع زر لوحة المفاتيح (ReplyKeyboardMarkup) لإصلاح WebApp على الهواتف
+# v20.0 - النسخة النهائية مع أزرار منفصلة للموبايل واللاب لجميع الإعلانات
 import logging, random, csv, io, asyncio
 from datetime import datetime, timedelta
 from bson.objectid import ObjectId
@@ -15,7 +15,7 @@ MONGO_URI = "mongodb+srv://orabiabosenna_db_user:mostafahbn0@cluster0.cwl2dvz.mo
 ADMIN_ID = 7825923320
 CHANNEL_USERNAME = "@easy_free_1"
 
-# ========== الثوابت الأساسية ==========
+# ========== الثوابت ==========
 POINTS_PER_USE = 50
 POINTS_PER_AD = 250
 MAX_ADS_PER_DAY = 15
@@ -33,11 +33,9 @@ MAX_DAILY_COMMISSION = 5000
 EARLY_BIRD_POINTS = 5000
 EARLY_BIRD_LIMIT = 100
 
-# نظام تحويل النقاط العادية إلى قابلة للسحب
 CONVERSION_RATE = 10
 MAX_DAILY_CONVERSION = 5000
 
-# ========== نظام المستويات المتقدم ==========
 LEVELS = {
     "مبتدئ": {"points": 0, "unlock_ads": 0, "reward": 0, "multiplier": 1.0},
     "نشيط": {"points": 10000, "unlock_ads": 5, "reward": 2000, "multiplier": 1.05},
@@ -47,7 +45,6 @@ LEVELS = {
 }
 LEVELS_LIST = ["مبتدئ", "نشيط", "محترف", "VIP", "أسطورة"]
 
-# ========== عجلة الحظ ==========
 WHEEL_PRIZES = [50, 100, 200, 500, 1000, 2000]
 WHEEL_DAILY_LIMIT = 3
 WHEEL_URL = "https://mostafa865.github.io/boot/wheel.html"
@@ -78,7 +75,7 @@ client = openai.OpenAI(base_url="https://openrouter.ai/api/v1", api_key=OPENROUT
 
 TOPIC, TONE, WEEKLY_TOPIC, BROADCAST_MSG = range(4)
 
-# ========== دوال قاعدة البيانات المتقدمة ==========
+# ========== دوال قاعدة البيانات (بدون تغيير) ==========
 def get_user(user_id):
     uid = str(user_id)
     user = users_col.find_one({"_id": uid})
@@ -302,12 +299,11 @@ def reduce_pending_level_ads(user_id):
     update_user(user_id, {"pending_level_upgrade": pending})
     return True
 
-# ========== عجلة الحظ ==========
+# ========== عجلة الحظ (معدلة لزرين) ==========
 def spin_wheel():
     return random.choice(WHEEL_PRIZES)
 
 async def wheel_of_fortune(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # هذه الدالة تُستدعى من زر القائمة، لكنها ستظهر زر لوحة المفاتيح
     query = update.callback_query
     await query.answer()
     uid = query.from_user.id
@@ -323,23 +319,30 @@ async def wheel_of_fortune(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 رجوع", callback_data="earn_menu")]])
         )
         return
-    # وضع إجراء معلق
     update_user(uid, {"pending_action": {"type": "wheel"}})
-    # إظهار زر لوحة المفاتيح
-    web_app_button = KeyboardButton("🎡 شاهد الإعلان واستدير", web_app=WebAppInfo(url=WHEEL_URL))
+    # زر للموبايل
+    web_app_button = KeyboardButton("🎡 شاهد الإعلان واستدير (موبايل)", web_app=WebAppInfo(url=WHEEL_URL))
     reply_markup = ReplyKeyboardMarkup(
         keyboard=[[web_app_button]],
         resize_keyboard=True,
         one_time_keyboard=True
     )
+    # زر للاب
     await query.message.reply_text(
         f"🎡 *عجلة الحظ* (المتبقي اليوم: {WHEEL_DAILY_LIMIT - spins_today})\n\n"
-        f"اضغط الزر أدناه لمشاهدة الإعلان ثم استلام نقاطك.",
+        f"📱 *موبايل:* اضغط الزر أسفل الشاشة\n💻 *لاب:* اضغط الزر أدناه 👇",
         parse_mode="Markdown",
         reply_markup=reply_markup
     )
+    await query.message.reply_text(
+        "💻 *للاب فقط:*",
+        parse_mode="Markdown",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("🎡 شاهد الإعلان واستدير (لاب)", web_app=WebAppInfo(url=WHEEL_URL))]
+        ])
+    )
 
-# ========== نظام الكوبونات ==========
+# ========== نظام الكوبونات (معدل) ==========
 async def create_coupon(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         await update.message.reply_text("⛔ غير مصرح.")
@@ -403,20 +406,29 @@ async def process_coupon(update: Update, context: ContextTypes.DEFAULT_TYPE):
     update_user(uid, {"pending_action": {"type": "coupon", "code": code, "points": coupon["points"]}})
     print(f"✅ Coupon pending action set for user {uid}: {coupon['points']} points")
 
-    web_app_button = KeyboardButton("📺 شاهد الإعلان واستلم الكوبون", web_app=WebAppInfo(url=AD_URL))
+    # زرين للموبايل واللاب
+    web_app_button = KeyboardButton("📺 شاهد الإعلان واستلم الكوبون (موبايل)", web_app=WebAppInfo(url=AD_URL))
     reply_markup = ReplyKeyboardMarkup(
         keyboard=[[web_app_button]],
         resize_keyboard=True,
         one_time_keyboard=True
     )
     await update.message.reply_text(
-        f"🎟️ *كود خصم `{code}`*\nلديك {coupon['points']} نقطة قابلة للسحب في انتظارك.\nاضغط الزر أدناه لمشاهدة الإعلان.",
+        f"🎟️ *كود خصم `{code}`*\nلديك {coupon['points']} نقطة قابلة للسحب في انتظارك.\n"
+        f"📱 *موبايل:* اضغط الزر أسفل الشاشة\n💻 *لاب:* اضغط الزر أدناه 👇",
         parse_mode="Markdown",
         reply_markup=reply_markup
     )
+    await update.message.reply_text(
+        "💻 *للاب فقط:*",
+        parse_mode="Markdown",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("📺 شاهد الإعلان واستلم الكوبون (لاب)", web_app=WebAppInfo(url=AD_URL))]
+        ])
+    )
     context.user_data['awaiting_coupon'] = False
 
-# ========== العروض الموقوتة ==========
+# ========== العروض الموقوتة (بدون تغيير) ==========
 def get_active_flash_offer():
     now = datetime.utcnow()
     offer = offers_col.find_one({"active": True, "start_time": {"$lte": now}, "end_time": {"$gte": now}})
@@ -439,7 +451,7 @@ async def admin_stop_offer(update, context):
     offers_col.update_one({}, {"$set": {"active": False}})
     await update.message.reply_text("✅ تم إيقاف العرض.")
 
-# ========== تحديات الأصدقاء ==========
+# ========== تحديات الأصدقاء (معدل في الإشعار) ==========
 async def challenge_friend(update, context):
     q = update.callback_query
     await q.answer()
@@ -471,7 +483,7 @@ async def challenge_target(update, context):
     await update.message.reply_text("✅ تم إرسال التحدي!")
     context.user_data['awaiting_challenge'] = False
 
-# ========== القوائم ==========
+# ========== القوائم (بدون تغيير) ==========
 def main_menu():
     kb = [
         [InlineKeyboardButton("✍️ كتابة محتوى", callback_data="content_menu"),
@@ -644,7 +656,7 @@ def admin_menu():
           [InlineKeyboardButton("📁 تصدير Excel", callback_data="admin_export")]]
     return InlineKeyboardMarkup(kb)
 
-# ========== ميزة تحويل النقاط ==========
+# ========== تحويل النقاط (بدون تغيير) ==========
 async def convert_points(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -762,16 +774,25 @@ async def start(update, context):
     u = get_user(uid)
     if u.get("early_bird_rewarded") and not u.get("early_bird_notified") and not u.get("pending_action"):
         update_user(uid, {"pending_action": {"type": "early_bird", "points": EARLY_BIRD_POINTS}})
-        web_app_button = KeyboardButton("🎁 استلام الهدية", web_app=WebAppInfo(url=EARLY_AD_URL))
+        # زرين للهدية المبكرة
+        web_app_button = KeyboardButton("🎁 استلام الهدية (موبايل)", web_app=WebAppInfo(url=EARLY_AD_URL))
         reply_markup = ReplyKeyboardMarkup(
             keyboard=[[web_app_button]],
             resize_keyboard=True,
             one_time_keyboard=True
         )
         await update.message.reply_text(
-            f"🎉 *أنت من أوائل المستخدمين!* لديك {EARLY_BIRD_POINTS} نقطة.\nاضغط الزر أدناه لمشاهدة إعلان واستلام الهدية.",
+            f"🎉 *أنت من أوائل المستخدمين!* لديك {EARLY_BIRD_POINTS} نقطة.\n"
+            f"📱 *موبايل:* اضغط الزر أسفل الشاشة\n💻 *لاب:* اضغط الزر أدناه 👇",
             parse_mode="Markdown",
             reply_markup=reply_markup
+        )
+        await update.message.reply_text(
+            "💻 *للاب فقط:*",
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🎁 استلام الهدية (لاب)", web_app=WebAppInfo(url=EARLY_AD_URL))]
+            ])
         )
     else:
         await update.message.reply_text(
@@ -779,7 +800,7 @@ async def start(update, context):
             parse_mode="Markdown", reply_markup=main_menu()
         )
 
-# ========== دوال المحتوى (AI) ==========
+# ========== دوال المحتوى (AI) بدون تغيير ==========
 async def handle_platform(update, context):
     q = update.callback_query
     await q.answer()
@@ -858,7 +879,7 @@ async def get_weekly_topic(update, context):
         await update.message.reply_text(f"❌ خطأ: {str(e)[:100]}", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏠 الرئيسية", callback_data="main_back")]]))
     return ConversationHandler.END
 
-# ========== دوال الإعلانات والمكافآت ==========
+# ========== دوال الإعلانات والمكافآت (المعالج الرئيسي) ==========
 async def handle_web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
     print("🔥 WebApp data received!")
     data = update.message.web_app_data.data
@@ -1054,7 +1075,7 @@ async def mystery_box(update, context):
         if data["streak_range"][0] <= streak <= data["streak_range"][1]:
             level = lvl
             break
-    # صندوق الحظ يستخدم زر ويب آب من نوع Inline لأنه محدد بمكانه
+    # صندوق الحظ يستخدم زر ويب آب من نوع Inline (زر واحد لكل من الموبايل واللاب)
     await q.message.reply_text(f"🎲 *صندوق {level}* 🎲\n🔥 Streak: {streak}\n⚠️ شاهد الإعلان أولاً:", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(f"🎁 افتح صندوق {level}", web_app=WebAppInfo(url=BOX_AD_URL))]]))
 
 async def watch_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1074,8 +1095,8 @@ async def watch_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
     earn = int(POINTS_PER_AD * mul * level_multiplier)
     remaining = MAX_ADS_PER_DAY - u["ad_watch_today"]
 
-    # زرار لوحة المفاتيح للموبايل
-    web_app_button = KeyboardButton("📺 شاهد الإعلان الآن", web_app=WebAppInfo(url=AD_URL))
+    # زر للموبايل
+    web_app_button = KeyboardButton("📺 شاهد الإعلان الآن (موبايل)", web_app=WebAppInfo(url=AD_URL))
     reply_markup = ReplyKeyboardMarkup(
         keyboard=[[web_app_button]],
         resize_keyboard=True,
@@ -1084,12 +1105,12 @@ async def watch_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await q.message.reply_text(
         f"📺 *شاهد الإعلان*\n🔥 مضاعف: {mul}x\n⭐ مستوى: {level_multiplier}x\n💰 ستربح: {earn} نقطة\n📊 تبقى: {remaining} إعلان.\n\n"
-        f"📱 *موبايل:* اضغط الزر أسفل الشاشة\n💻 *لاب:* اضغط الزر داخل الرسالة 👇",
+        f"📱 *موبايل:* اضغط الزر أسفل الشاشة\n💻 *لاب:* اضغط الزر أدناه 👇",
         parse_mode="Markdown",
         reply_markup=reply_markup
     )
 
-    # زرار Inline للاب
+    # زر للاب
     await q.message.reply_text(
         "💻 *للاب فقط:*",
         parse_mode="Markdown",
@@ -1122,16 +1143,25 @@ async def claim_bonus(update, context):
     u = check_daily_tasks(get_user(uid))
     if u["tasks"]["ad"] and u["tasks"]["used"] and not u["tasks"]["bonus"]:
         update_user(uid, {"pending_action": {"type": "claim_bonus"}})
-        web_app_button = KeyboardButton("📺 شاهد الإعلان واستلم البونص", web_app=WebAppInfo(url=BONUS_AD_URL))
+        # زرين للبونص
+        web_app_button = KeyboardButton("📺 شاهد الإعلان واستلم البونص (موبايل)", web_app=WebAppInfo(url=BONUS_AD_URL))
         reply_markup = ReplyKeyboardMarkup(
             keyboard=[[web_app_button]],
             resize_keyboard=True,
             one_time_keyboard=True
         )
         await q.message.reply_text(
-            "🎁 *بونص يومي*\nلديك 300 نقطة عادية في انتظارك.\nاضغط الزر أدناه لمشاهدة الإعلان.",
+            "🎁 *بونص يومي*\nلديك 300 نقطة عادية في انتظارك.\n"
+            f"📱 *موبايل:* اضغط الزر أسفل الشاشة\n💻 *لاب:* اضغط الزر أدناه 👇",
             parse_mode="Markdown",
             reply_markup=reply_markup
+        )
+        await q.message.reply_text(
+            "💻 *للاب فقط:*",
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("📺 شاهد الإعلان واستلم البونص (لاب)", web_app=WebAppInfo(url=BONUS_AD_URL))]
+            ])
         )
     else:
         await q.message.reply_text("❌ لم تكمل المهام أو استلمت البونص مسبقاً!")
@@ -1159,7 +1189,7 @@ async def withdraw_request(update, context):
     await context.bot.send_message(ADMIN_ID, f"💰 طلب سحب: {q.from_user.first_name} - {amt}$", parse_mode="Markdown")
     await q.message.reply_text(f"💰 تم إرسال طلب {amt}$. سيتم مراجعته.", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏠 القائمة", callback_data="main_back")]]))
 
-# ========== دوال المتصدرين والأدمن ==========
+# ========== دوال المتصدرين والأدمن (بدون تغيير) ==========
 def get_leaderboard(limit=10):
     cursor = users_col.find({}, {"_id": 1, "points": 1, "withdrawable_points": 1, "level": 1}).sort("points", -1).limit(limit)
     res = []
@@ -1305,7 +1335,7 @@ async def handle_nav(update, context):
     elif q.data in ("home", "new"):
         await main_back(update, context)
 
-# ========== المهام المجدولة ==========
+# ========== المهام المجدولة (تم تعديل إشعار التحدي والمسابقة الشهرية) ==========
 async def scheduled_tasks(app):
     while True:
         now = datetime.utcnow()
@@ -1370,8 +1400,29 @@ async def scheduled_tasks(app):
                     top_user = user["_id"]
             if top_user:
                 update_user(top_user, {"pending_action": {"type": "monthly_contest", "points": 50 * POINTS_PER_DOLLAR}})
+                # إرسال إشعار مع زر إعلان (زرين)
+                web_app_button = KeyboardButton("🏆 شاهد الإعلان لاستلام الجائزة (موبايل)", web_app=WebAppInfo(url=MONTHLY_AD_URL))
+                reply_markup = ReplyKeyboardMarkup(
+                    keyboard=[[web_app_button]],
+                    resize_keyboard=True,
+                    one_time_keyboard=True
+                )
                 try:
-                    await app.bot.send_message(int(top_user), f"🏆 مسابقة الشهر: أعلى رصيد {top_points} نقطة. شاهد إعلاناً لاستلام 50$.", parse_mode="Markdown")
+                    await app.bot.send_message(
+                        int(top_user),
+                        f"🏆 *مسابقة الشهر*\nأعلى رصيد {top_points} نقطة. لديك 50$ في انتظارك.\n"
+                        f"📱 *موبايل:* اضغط الزر أسفل الشاشة\n💻 *لاب:* اضغط الزر أدناه 👇",
+                        parse_mode="Markdown",
+                        reply_markup=reply_markup
+                    )
+                    await app.bot.send_message(
+                        int(top_user),
+                        "💻 *للاب فقط:*",
+                        parse_mode="Markdown",
+                        reply_markup=InlineKeyboardMarkup([
+                            [InlineKeyboardButton("🏆 شاهد الإعلان لاستلام الجائزة (لاب)", web_app=WebAppInfo(url=MONTHLY_AD_URL))]
+                        ])
+                    )
                 except:
                     pass
         for user in users_col.find({"challenge_active": {"$ne": None}}):
@@ -1385,8 +1436,29 @@ async def scheduled_tasks(app):
                 winner = u["_id"] if u_points > p_points else (partner_id if p_points > u_points else None)
                 if winner:
                     update_user(winner, {"pending_action": {"type": "challenge_reward", "points": 1000}})
+                    # إرسال إشعار للفائث بطلب مشاهدة إعلان (زرين)
+                    web_app_button = KeyboardButton("🏆 شاهد الإعلان لاستلام جائزة التحدي (موبايل)", web_app=WebAppInfo(url=CHALLENGE_AD_URL))
+                    reply_markup = ReplyKeyboardMarkup(
+                        keyboard=[[web_app_button]],
+                        resize_keyboard=True,
+                        one_time_keyboard=True
+                    )
                     try:
-                        await app.bot.send_message(int(winner), f"🎉 فزت في تحدي الأصدقاء! شاهد إعلاناً لاستلام 1000 نقطة.", parse_mode="Markdown")
+                        await app.bot.send_message(
+                            int(winner),
+                            f"🎉 *فزت في تحدي الأصدقاء!*\nلديك 1000 نقطة في انتظارك.\n"
+                            f"📱 *موبايل:* اضغط الزر أسفل الشاشة\n💻 *لاب:* اضغط الزر أدناه 👇",
+                            parse_mode="Markdown",
+                            reply_markup=reply_markup
+                        )
+                        await app.bot.send_message(
+                            int(winner),
+                            "💻 *للاب فقط:*",
+                            parse_mode="Markdown",
+                            reply_markup=InlineKeyboardMarkup([
+                                [InlineKeyboardButton("🏆 شاهد الإعلان لاستلام الجائزة (لاب)", web_app=WebAppInfo(url=CHALLENGE_AD_URL))]
+                            ])
+                        )
                     except:
                         pass
                 update_user(u["_id"], {"challenge_active": None, "challenge_points": 0, "last_challenge_reset": now.isoformat()})
