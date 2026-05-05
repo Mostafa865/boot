@@ -127,7 +127,8 @@ def get_user(user_id):
             "last_challenge_reset": today, "daily_converted": 0, "level": "مبتدئ",
             "level_reward_claimed": False, "pending_level_upgrade": None, "highest_total_points": 300,
             "wheel_spins_today": 0, "last_wheel_date": "", "banned": False,
-            "global_challenge_ads": 0, "global_challenge_reward_claimed": False
+            "global_challenge_ads": 0,
+            "global_challenge_reward_claimed": False
             "phone": None, "payment_info": None,
         }
         users_col.insert_one(user)
