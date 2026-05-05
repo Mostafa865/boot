@@ -48,6 +48,7 @@ CHEAT_LOG_COLLECTION = "cheat_logs"
 # إعدادات أتمتة السحب
 AUTO_WITHDRAWAL_ENABLED = True
 USDT_ADDRESS_REGEX = r'^T[a-zA-Z0-9]{33}$'  # عنوان TRC20 بسيط
+WITHDRAW_PHONE = 101   # قيمة جديدة بعيدة عن الأرقام المستخدمة الأخرى
 
 LEVELS = {
     "مبتدئ": {"points": 0, "unlock_ads": 0, "reward": 0, "multiplier": 1.0},
@@ -127,6 +128,7 @@ def get_user(user_id):
             "level_reward_claimed": False, "pending_level_upgrade": None, "highest_total_points": 300,
             "wheel_spins_today": 0, "last_wheel_date": "", "banned": False,
             "global_challenge_ads": 0, "global_challenge_reward_claimed": False
+            "phone": None, "payment_info": None,
         }
         users_col.insert_one(user)
     else:
@@ -1390,31 +1392,41 @@ async def claim_bonus(update, context):
     else:
         await q.message.reply_text("❌ لم تكمل المهام أو استلمت البونص مسبقاً!")
 
-async def withdraw_request(update, context):
+async def withdraw_request(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
-    u = get_user(q.from_user.id)
+    uid = q.from_user.id
+    u = get_user(uid)
     if u.get("banned", False):
         await q.answer("⛔ أنت محظور", show_alert=True)
         return
     w = u.get("withdrawable_points", 0)
     if w < MIN_WITHDRAW_POINTS:
         need = MIN_WITHDRAW_POINTS - w
-        await q.message.reply_text(f"💰 *السحب*\nرصيدك: {w}\nتحتاج {need} نقطة.", parse_mode="Markdown")
+        await q.message.reply_text(f"💰 *السحب*\nرصيدك القابل للسحب: {w} نقطة\nتحتاج {need} نقطة إضافية للحد الأدنى ({MIN_WITHDRAW_POINTS} نقطة).", parse_mode="Markdown")
         return
+    # نطلب من المستخدم كتابة طريقة الدفع وتفاصيله
+    await q.message.reply_text("📝 *طلب سحب جديد*\n\nأرسل الآن طريقة الدفع وتفاصيلك على سطر واحد بالشكل التالي:\n\n`Vodafone Cash, 01012345678`\nأو `InstaPay, user@instapay.com`\nأو `Bank Transfer, IBAN: ...`\n\nسيتم خصم النقاط فوراً وإرسال طلب للمراجعة.", parse_mode="Markdown")
+    context.user_data['awaiting_withdraw_details'] = True
+
+async def withdraw_get_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    phone = update.message.text.strip()
+    if not phone:
+        await update.message.reply_text("❌ لم ترسل أي معلومات. أعد المحاولة من البداية.")
+        return ConversationHandler.END
+
+    # استرجاع معلومات المستخدم
+    u = get_user(uid)
+    w = context.user_data.get("withdraw_amount", 0)
     amt = w // POINTS_PER_DOLLAR
     deduct = amt * POINTS_PER_DOLLAR
-    new_w = w - deduct
-    update_user(q.from_user.id, {"withdrawable_points": new_w})
-    if not u.get("has_withdrawn_before"):
-        update_user(q.from_user.id, {"has_withdrawn_before": True, "first_withdrawal_date": datetime.utcnow().isoformat()})
-        new_w += 1000
-        update_user(q.from_user.id, {"withdrawable_points": new_w})
-        await q.message.reply_text("🎁 هدية أول سحب! +1000 نقطة.", parse_mode="Markdown")
-    req = {"user_id": q.from_user.id, "points_deducted": deduct, "amount_usd": amt, "status": "pending", "date": datetime.utcnow().isoformat()}
-    withdrawals_col.insert_one(req)
-    await context.bot.send_message(ADMIN_ID, f"💰 طلب سحب: {q.from_user.first_name} - {amt}$", parse_mode="Markdown")
-    await q.message.reply_text(f"💰 تم إرسال طلب {amt}$. سيتم مراجعته.", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏠 القائمة", callback_data="main_back")]]))
+    new_w = u["withdrawable_points"] - deduct
+
+    # تحديث الرصيد
+    update_user(uid, {"withdrawable_points": new_w})
+
+    # ت
 
 # ========== دوال المتصدرين والأدمن القديمة ==========
 def get_leaderboard(limit=10):
@@ -1779,6 +1791,8 @@ async def handle_all_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await process_coupon(update, context)
     elif context.user_data.get('awaiting_challenge'):
         await challenge_target(update, context)
+    elif context.user_data.get('awaiting_withdraw_details'):
+        await withdraw_details(update, context)
 
 
 
@@ -1887,7 +1901,58 @@ async def set_wallet_btn(update, context):
     await q.message.reply_text("أرسل الأمر: `/setwallet <عنوان محفظتك TRC20>`", parse_mode="Markdown")
 
 
-      
+
+
+async def withdraw_details(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.user_data.get('awaiting_withdraw_details'):
+        return
+    uid = update.effective_user.id
+    user = get_user(uid)
+    if user.get("banned", False):
+        await update.message.reply_text("⛔ أنت محظور.")
+        context.user_data.pop('awaiting_withdraw_details', None)
+        return
+
+    details = update.message.text.strip()
+    if len(details) < 5:
+        await update.message.reply_text("❌ يرجى إدخال تفاصيل صحيحة (طريقة الدفع والمعلومات).")
+        return
+
+    w = user.get("withdrawable_points", 0)
+    if w < MIN_WITHDRAW_POINTS:
+        await update.message.reply_text("❌ لم يعد رصيدك كافياً للسحب (تغير الرصيد أثناء الإدخال).")
+        context.user_data.pop('awaiting_withdraw_details', None)
+        return
+
+    amt = w // POINTS_PER_DOLLAR
+    deduct = amt * POINTS_PER_DOLLAR
+    new_w = w - deduct
+    update_user(uid, {"withdrawable_points": new_w})
+
+    # حفظ الطلب مع التفاصيل
+    req = {
+        "user_id": uid,
+        "points_deducted": deduct,
+        "amount_usd": amt,
+        "payment_details": details,
+        "status": "pending",
+        "date": datetime.utcnow()
+    }
+    withdrawals_col.insert_one(req)
+    await log_action(uid, "طلب سحب يدوي", uid, f"{amt}$ - {details}")
+
+    # إرسال إشعار للأدمن
+    await context.bot.send_message(
+        ADMIN_ID,
+        f"💰 *طلب سحب جديد*\n👤 المستخدم: {update.effective_user.first_name} (ID: `{uid}`)\n💵 المبلغ: {amt}$\n📝 التفاصيل: {details}\n📅 الوقت: {datetime.utcnow().strftime('%Y-%m-%d %H:%M')}\n\nاستخدم `/approve_{ObjectId()}` أو `/reject_{ObjectId()}` (يجب استبدال المعرف لاحقاً).",
+        parse_mode="Markdown"
+    )
+    await update.message.reply_text(f"✅ تم طلب سحب {amt}$ بنجاح.\nسيتم مراجعة طلبك وإرسال المبلغ خلال 48 ساعة.", parse_mode="Markdown")
+    context.user_data.pop('awaiting_withdraw_details', None)
+
+
+
+
 
 # ========== تشغيل البوت ==========
 def main():
