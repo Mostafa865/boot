@@ -34,6 +34,12 @@ EARLY_BIRD_POINTS = 5000
 EARLY_BIRD_LIMIT = 100
 CONVERSION_RATE = 10
 MAX_DAILY_CONVERSION = 5000
+# ========== إعدادات كشف الغش ==========
+ANTI_CHEAT_ENABLED = True
+MAX_ADS_PER_SECOND = 1   # إعلان واحد كل 10 ثوانٍ (أي 6 في الدقيقة)
+IP_CHECK_ENABLED = True
+IP_API_URL = "https://ipapi.co/{ip}/json/"
+MULTI_ACCOUNT_LIMIT = 3  # عدد الحسابات المسموحة من نفس الـ IP
 
 LEVELS = {
     "مبتدئ": {"points": 0, "unlock_ads": 0, "reward": 0, "multiplier": 1.0},
@@ -1062,6 +1068,14 @@ async def handle_web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE
         if u.get("banned", False):
             await update.message.reply_text("⛔ أنت محظور.")
             return
+                  # فحص السرعة: منع الإعلانات المتكررة بسرعة
+        last_ad_time = context.user_data.get('last_ad_time', 0)
+        now = datetime.utcnow().timestamp()
+        if now - last_ad_time < 10:   # أقل من 10 ثواني
+            await update.message.reply_text("⚠️ أنت تشاهد إعلانات بسرعة كبيرة. انتظر 10 ثوانٍ ثم حاول مرة أخرى.")
+            return
+        context.user_data['last_ad_time'] = now
+      
         today = datetime.utcnow().strftime("%Y-%m-%d")
         if u.get("last_ad_date") != today:
             update_user(uid, {"ad_watch_today": 0, "last_ad_date": today})
@@ -1709,6 +1723,48 @@ async def handle_all_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await process_coupon(update, context)
     elif context.user_data.get('awaiting_challenge'):
         await challenge_target(update, context)
+
+
+
+import aiohttp
+from collections import defaultdict
+
+# قاموس لتتبع IP للمستخدمين
+user_ip_map = defaultdict(set)  # ip -> set of user_ids
+ip_blacklist = set()
+
+async def get_ip_from_telegram(update: Update) -> str:
+    """محاولة استخراج IP المستخدم من كائن update (إن وُجد)"""
+    try:
+        # محاولة الحصول من web_app_data (إن وجد)
+        if update.message and update.message.web_app_data:
+            # يمكنك إضافة منطق لاستخراج IP من هيدرز الطلب (صعب)
+            pass
+        # الحل البديل: استخدام خدمة خارجية لمعرفة IP البوت نفسه - لا يمكن معرفة IP المستخدم مباشرة.
+        # لذلك سنعتمد على خدمة خارجية إذا قمنا بتوجيه المستخدم لزيارة رابط.
+        # بدلاً من ذلك، سنستخدم آلية مبسطة: تتبع النقرات السريعة وعدد الحسابات فقط.
+        return None
+    except:
+        return None
+
+async def check_ad_spam(user_id: int, context: ContextTypes.DEFAULT_TYPE) -> bool:
+    """منع مشاهدة إعلانات متكررة بسرعة"""
+    last_ad_time = context.user_data.get('last_ad_time', 0)
+    now = datetime.utcnow().timestamp()
+    if now - last_ad_time < 10:  # أقل من 10 ثواني
+        return False
+    context.user_data['last_ad_time'] = now
+    return True
+
+def check_multi_account(ip: str, user_id: int) -> bool:
+    """إذا كان IP يظهر لأكثر من حد معين من الحسابات => إرجاع False (محظور)"""
+    if not ip:
+        return True
+    user_ip_map[ip].add(user_id)
+    if len(user_ip_map[ip]) > MULTI_ACCOUNT_LIMIT:
+        return False
+    return True
+  
       
 
 # ========== تشغيل البوت ==========
