@@ -40,6 +40,11 @@ MAX_ADS_PER_SECOND = 1   # إعلان واحد كل 10 ثوانٍ (أي 6 في �
 IP_CHECK_ENABLED = True
 IP_API_URL = "https://ipapi.co/{ip}/json/"
 MULTI_ACCOUNT_LIMIT = 3  # عدد الحسابات المسموحة من نفس الـ IP
+# ========== إعدادات كشف الغش ==========
+MAX_ADS_PER_HOUR = 30           # الحد الأقصى للإعلانات في الساعة
+SUSPICIOUS_THRESHOLD = 3        # عدد مرات السلوك المشبوه قبل التحذير
+AUTO_BAN_THRESHOLD = 5          # بعدها يحظر تلقائياً
+CHEAT_LOG_COLLECTION = "cheat_logs"
 
 LEVELS = {
     "مبتدئ": {"points": 0, "unlock_ads": 0, "reward": 0, "multiplier": 1.0},
@@ -78,6 +83,8 @@ challenges_col = db["challenges"]
 coupons_col = db["coupons"]
 global_challenges_col = db["global_challenges"]
 audit_col = db["audit_log"]
+cheat_logs_col = db["cheat_logs"]
+
 
 try:
     mongo.admin.command('ping')
@@ -848,6 +855,19 @@ async def admin_user_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await update.message.reply_text(f"❌ خطأ: استخدم `/userinfo <user_id>`\n{str(e)}")
 
+
+
+async def log_cheat(user_id: int, cheat_type: str, details: str = ""):
+    cheat_logs_col.insert_one({
+        "user_id": user_id,
+        "type": cheat_type,
+        "details": details,
+        "timestamp": datetime.utcnow()
+    })
+
+
+
+
 # ========== أزرار الأدمن ==========
 async def admin_add_points_btn(update, context):
     q = update.callback_query
@@ -876,6 +896,24 @@ async def admin_userinfo_btn(update, context):
     q = update.callback_query
     await q.answer()
     await q.message.reply_text("🔍 *معلومات مستخدم*\nأرسل الأمر: `/userinfo <user_id>`", parse_mode="Markdown")
+
+
+
+async def cheat_logs(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("⛔ غير مصرح.")
+        return
+    logs = list(cheat_logs_col.find({}).sort("timestamp", -1).limit(10))
+    if not logs:
+        await update.message.reply_text("✅ لا توجد مخالفات.")
+        return
+    text = "🚨 *آخر المخالفات*\n\n"
+    for log in logs:
+        time_str = log["timestamp"].strftime("%H:%M:%S")
+        text += f"• {time_str} - المستخدم {log['user_id']} - {log['type']}\n"
+    await update.message.reply_text(text, parse_mode="Markdown")
+  
+
 
 # ========== تحويل النقاط ==========
 async def convert_points(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1079,14 +1117,12 @@ async def handle_web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE
         if u.get("banned", False):
             await update.message.reply_text("⛔ أنت محظور.")
             return
-        # فحص السرعة
-        now_ts = datetime.utcnow().timestamp()
-        last_ad_ts = u.get("last_ad_time", 0)
-        if now_ts - last_ad_ts < 10:
-            await update.message.reply_text("⚠️ انتظر 10 ثوانٍ بين الإعلانات")
-            return
-        update_user(uid, {"last_ad_time": now_ts})
 
+          
+               if now_ts - last_ad_ts < 10:
+            await update.message.reply_text("⚠️ انتظر 10 ثوانٍ بين الإعلانات")
+            await log_cheat(uid, "speed_violation", f"فرق {now_ts - last_ad_ts:.1f} ثانية")
+            return
       
         today = datetime.utcnow().strftime("%Y-%m-%d")
         if u.get("last_ad_date") != today:
@@ -1807,6 +1843,7 @@ def main():
     app.add_handler(CommandHandler("userinfo", admin_user_info))
     app.add_handler(CommandHandler("start_challenge", start_global_challenge))
     app.add_handler(CommandHandler("end_challenge", end_global_challenge))
+    app.add_handler(CommandHandler("cheatlogs", cheat_logs))
 
     callbacks = [
         ("^content_menu$", content_menu), ("^earn_menu$", earn_menu), ("^account_menu$", account_menu),
