@@ -1109,25 +1109,25 @@ async def get_weekly_topic(update, context):
 async def handle_web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
     print("🔥 WebApp data received!")
     data = update.message.web_app_data.data
+    context.user_data['last_ad_time'] = context.user_data.get('last_ad_time', 0)
     print(f"Data: {data}")
     uid = update.effective_user.id
 
-       if data == "ad_watched":
+          if data == "ad_watched":
         u = get_user(uid)
         if u.get("banned", False):
             await update.message.reply_text("⛔ أنت محظور.")
             return
-
-        # فحص السرعة باستخدام قاعدة البيانات (يمنع تكرار الإعلانات خلال 10 ثوانٍ)
+        
+        # فحص السرعة
         now_ts = datetime.utcnow().timestamp()
-        last_ad_ts = u.get("last_ad_time", 0)
-        if now_ts - last_ad_ts < 10:
+        if now_ts - context.user_data['last_ad_time'] < 10:
             await update.message.reply_text("⚠️ انتظر 10 ثوانٍ بين الإعلانات.")
             return
-        # تحديث آخر وقت إعلان
-        update_user(uid, {"last_ad_time": now_ts})
+        context.user_data['last_ad_time'] = now_ts
 
-        today = datetime.utcnow().strftime("%Y-%m-%d")
+        today = datetime.utcnow().strftime("%Y-%m-%d")  # باقي الكود...
+            
         if u.get("last_ad_date") != today:
             update_user(uid, {"ad_watch_today": 0, "last_ad_date": today})
             u["ad_watch_today"] = 0
