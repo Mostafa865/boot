@@ -10,63 +10,44 @@
         .btn { background: #6c3df4; padding: 15px 30px; border-radius: 12px; border: none; font-size: 18px; cursor: pointer; color: white; width: 100%; max-width: 300px; margin-top: 20px; }
         .btn:disabled { background: #444; cursor: not-allowed; }
         #status { margin-top: 20px; font-size: 16px; color: #a78bfa; }
-        #timer { font-size: 36px; color: #f4a033; margin-top: 15px; display: none; }
     </style>
 </head>
 <body>
     <h2>📺 شاهد الإعلان واكسب نقاط!</h2>
     <p>اضغط الزر عشان يظهر الإعلان</p>
     <button class="btn" id="watchBtn" onclick="watchAd()">🎬 تشغيل الإعلان</button>
-    <div id="timer"></div>
     <div id="status"></div>
 
     <script>
         let tg = window.Telegram.WebApp;
         tg.ready();
         tg.expand();
+        let clicked = false;
 
         async function watchAd() {
             const btn = document.getElementById('watchBtn');
             const statusDiv = document.getElementById('status');
-            const timerDiv = document.getElementById('timer');
-
             btn.disabled = true;
             statusDiv.innerText = "⏳ جاري تحميل الإعلان...";
 
-            // شغل الإعلان
-            try { show_10959746(); } catch(e) {}
-
-            // countdown 30 ثانية إجباري
-            let seconds = 30;
-            timerDiv.style.display = "block";
-            timerDiv.innerText = `⏳ ${seconds}`;
-
-            await new Promise(resolve => {
-                const interval = setInterval(() => {
-                    seconds--;
-                    timerDiv.innerText = `⏳ ${seconds}`;
-                    if (seconds <= 0) {
-                        clearInterval(interval);
-                        resolve();
-                    }
-                }, 1000);
-            });
-
-            // بعد الـ 30 ثانية
-            timerDiv.style.display = "none";
-            statusDiv.innerText = "✅ تم! اضغط استلام النقاط";
-            tg.MainButton.setText("🎁 استلام النقاط");
-            tg.MainButton.show();
-           tg.MainButton.onClick(() => {
-           tg.sendData('ad_watched');
-           tg.MainButton.setText("✅ تم!");
-           tg.MainButton.hide();
-           setTimeout(() => {
-        tg.close();
-        // لو مش اشتغل - fallback
-        window.close();
-    }, 800);
-});
+            try {
+                await show_10959746();
+                statusDiv.innerText = "✅ تم مشاهدة الإعلان!";
+                tg.MainButton.setText("🎁 استلام النقاط");
+                tg.MainButton.show();
+                tg.MainButton.onClick(() => {
+                    if (clicked) return;
+                    clicked = true;
+                    tg.sendData('ad_watched');
+                    tg.MainButton.setText("✅ تم!");
+                    tg.MainButton.hide();
+                    setTimeout(() => tg.close(), 300);
+                });
+            } catch(e) {
+                statusDiv.innerText = "❌ حاول مجدداً.";
+                btn.disabled = false;
+            }
+        }
     </script>
 </body>
 </html>
