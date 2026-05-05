@@ -1,35 +1,58 @@
 <!DOCTYPE html>
-<html>
+<html lang="ar">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>بونص يومي - شاهد إعلان واكسب نقاط</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src='//libtl.com/sdk.js' data-zone='10959746' data-sdk='show_10959746'></script>
     <style>
-        body { background: #1a1a2e; color: white; text-align: center; padding: 20px; }
-        .btn { background: #f4a033; padding: 15px 30px; border: none; border-radius: 12px; font-size: 18px; cursor: pointer; }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); min-height: 100vh; display: flex; justify-content: center; align-items: center; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 20px; }
+        .container { background: rgba(255, 255, 255, 0.1); backdrop-filter: blur(12px); border-radius: 32px; padding: 40px 30px; text-align: center; max-width: 450px; width: 100%; box-shadow: 0 20px 35px rgba(0, 0, 0, 0.3); border: 1px solid rgba(255, 255, 255, 0.2); animation: fadeIn 0.5s ease; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+        h1 { font-size: 32px; margin-bottom: 15px; color: #f4a033; text-shadow: 0 2px 5px rgba(0,0,0,0.2); }
+        p { font-size: 18px; color: #ddd; margin-bottom: 30px; line-height: 1.5; }
+        .btn { background: linear-gradient(45deg, #f4a033, #f39c12); border: none; padding: 16px 32px; border-radius: 60px; font-size: 20px; font-weight: bold; color: #1a1a2e; cursor: pointer; transition: all 0.3s ease; width: 100%; box-shadow: 0 6px 14px rgba(0, 0, 0, 0.3); letter-spacing: 1px; }
+        .btn:hover { transform: translateY(-3px); box-shadow: 0 12px 20px rgba(0, 0, 0, 0.4); background: linear-gradient(45deg, #f39c12, #f4a033); }
+        .btn:active { transform: translateY(2px); }
+        .btn:disabled { background: #555; transform: none; cursor: not-allowed; box-shadow: none; }
+        .loader { display: inline-block; width: 24px; height: 24px; border: 3px solid rgba(255,255,255,0.3); border-radius: 50%; border-top-color: #fff; animation: spin 1s ease-in-out infinite; margin-left: 10px; vertical-align: middle; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .status { margin-top: 20px; font-size: 14px; color: #ccc; }
+        @media (max-width: 480px) { .container { padding: 30px 20px; } h1 { font-size: 26px; } .btn { font-size: 18px; padding: 14px 24px; } }
     </style>
 </head>
 <body>
-    <h2>🎁 بونص يومي</h2>
-    <button class="btn" onclick="startAd()">📺 شاهد الإعلان واستلم 300 نقطة</button>
+    <div class="container">
+        <h1>🎁 بونص يومي</h1>
+        <p>شاهد الإعلان كاملاً واحصل على <strong style="color:#f4a033">300 نقطة عادية</strong> إضافية!</p>
+        <button class="btn" id="watchBtn">🎬 تشغيل الإعلان الآن</button>
+        <div class="status" id="statusMsg"></div>
+    </div>
     <script>
         let tg = window.Telegram.WebApp;
         tg.ready();
         tg.expand();
-
-        async function startAd() {
-            const btn = document.querySelector('.btn');
+        const btn = document.getElementById('watchBtn');
+        const statusDiv = document.getElementById('statusMsg');
+        btn.onclick = async () => {
             btn.disabled = true;
+            btn.innerHTML = '⏳ جاري تحميل الإعلان... <span class="loader"></span>';
+            statusDiv.innerText = '';
             try {
-                await show_10959746('pop');
+                if (typeof show_10959746 !== 'function') throw new Error('SDK not loaded');
+                await show_10959746();
+                statusDiv.innerText = '✅ تم مشاهدة الإعلان! جاري إضافة النقاط...';
                 tg.sendData('bonus_ad_watched');
                 setTimeout(() => { tg.close(); }, 500);
-            } catch(e) {
-                alert("حدث خطأ، حاول مرة أخرى");
+            } catch (err) {
+                console.error(err);
+                statusDiv.innerText = '❌ حدث خطأ، حاول مرة أخرى.';
                 btn.disabled = false;
+                btn.innerHTML = '🎬 تشغيل الإعلان الآن';
             }
-        }
+        };
     </script>
 </body>
 </html>
