@@ -1,4 +1,4 @@
-# v21.2 - النسخة النهائية مع التحديات الجماعية + سجل التدقيق + تحليل التسرب
+# v21.4 - النسخة النهائية مع إصلاح البث الجماعي وسجل التدقيق
 import logging, random, csv, io, asyncio
 from datetime import datetime, timedelta
 from bson.objectid import ObjectId
@@ -71,7 +71,7 @@ offers_col = db["flash_offers"]
 challenges_col = db["challenges"]
 coupons_col = db["coupons"]
 global_challenges_col = db["global_challenges"]
-audit_col = db["audit_log"]          # سجل التدقيق
+audit_col = db["audit_log"]
 
 client = openai.OpenAI(base_url="https://openrouter.ai/api/v1", api_key=OPENROUTER_API_KEY)
 
@@ -238,8 +238,9 @@ async def log_action(admin_id: int, action_type: str, target_user_id: int = None
             "target_user_id": target_user_id,
             "details": details
         })
+        print(f"✅ تم تسجيل إجراء: {action_type} - {details}")
     except Exception as e:
-        print(f"خطأ في تسجيل التدقيق: {e}")
+        print(f"❌ خطأ في تسجيل التدقيق: {e}")
 
 async def admin_audit_log(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
@@ -417,10 +418,10 @@ async def create_coupon(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"❌ خطأ: استخدم `/createcoupon <كود> <نقاط> <أيام> <حد_الاستخدام>`\n{str(e)}")
 
 async def redeem_coupon(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    uid = query.from_user.id
-    await query.message.reply_text(
+    q = update.callback_query
+    await q.answer()
+    uid = q.from_user.id
+    await q.message.reply_text(
         "🎟️ *استخدام كود خصم*\nأرسل الكود الآن:",
         parse_mode="Markdown"
     )
@@ -1227,7 +1228,7 @@ async def weekly(update, context):
     if u["points"] < POINTS_PER_USE:
         await q.message.reply_text("❌ نقاطك مش كافية!", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("📺 شاهد إعلان", callback_data="watch_ad")]]))
         return ConversationHandler.END
-    await q.edit_message_text("📅 *جدولة أسبوعية*\nاكتب موضوع قناتك:", parse_mode="Markdown")
+    await q.edit_message_text("📅 *جدولة محتوى أسبوعي*\nاكتب موضوع قناتك:", parse_mode="Markdown")
     return WEEKLY_TOPIC
 
 async def get_topic(update, context):
@@ -1674,26 +1675,37 @@ async def admin_users(update, context):
     total = users_col.count_documents({})
     await q.message.reply_text(f"👥 *المستخدمون*\nإجمالي: {total}", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 رجوع", callback_data="admin_back")]]))
 
-async def admin_broadcast_start(update, context):
+# ========== البث الجماعي (تم تصليحه) ==========
+async def admin_broadcast_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
-    if q.from_user.id != ADMIN_ID: return
-    await q.message.reply_text("📢 اكتب الرسالة:")
+    if q.from_user.id != ADMIN_ID:
+        await q.answer("⛔ غير مصرح.", show_alert=True)
+        return ConversationHandler.END
+    await q.message.reply_text("📢 *رسالة جماعية*\nأرسل النص الذي تريد نشره لجميع المستخدمين:", parse_mode="Markdown")
     return BROADCAST_MSG
 
-async def admin_broadcast_send(update, context):
-    if update.effective_user.id != ADMIN_ID: return ConversationHandler.END
+async def admin_broadcast_send(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("⛔ غير مصرح.")
+        return ConversationHandler.END
     msg = update.message.text
     success = 0
+    fail = 0
+    total_users = users_col.count_documents({})
+    await update.message.reply_text("⏳ جاري إرسال الرسالة... قد يستغرق بعض الوقت.")
     for user in users_col.find():
         try:
             await context.bot.send_message(int(user["_id"]), f"📢 *رسالة من الإدارة:*\n\n{msg}", parse_mode="Markdown")
             success += 1
-        except:
-            pass
-    await update.message.reply_text(f"✅ تم الإرسال لـ {success} مستخدم.")
+        except Exception as e:
+            fail += 1
+        await asyncio.sleep(0.05)  # لتجنب تجاوز حد التردد
+    await log_action(ADMIN_ID, "بث جماعي", None, f"تم الإرسال لـ {success} مستخدم، فشل {fail}")
+    await update.message.reply_text(f"✅ *تم البث الجماعي*\n✓ نجاح: {success}\n✗ فشل: {fail}\n📊 إجمالي المستخدمين: {total_users}")
     return ConversationHandler.END
 
+# ========== طلبات السحب ==========
 async def admin_withdrawals(update, context):
     q = update.callback_query
     await q.answer()
@@ -1725,6 +1737,7 @@ async def approve_withdraw(update, context):
         await q.message.reply_text("الطلب غير موجود.")
         return
     db["withdrawals"].update_one({"_id": ObjectId(rid)}, {"$set": {"status": "approved"}})
+    await log_action(ADMIN_ID, "قبول سحب", withdrawal["user_id"], f"{withdrawal['amount_usd']}$")
     try:
         await context.bot.send_message(withdrawal["user_id"], f"✅ تمت الموافقة على سحب {withdrawal['amount_usd']}$.", parse_mode="Markdown")
     except:
@@ -1745,6 +1758,7 @@ async def reject_withdraw(update, context):
     u = get_user(withdrawal["user_id"])
     update_user(withdrawal["user_id"], {"withdrawable_points": u.get("withdrawable_points", 0) + withdrawal["points_deducted"]})
     db["withdrawals"].update_one({"_id": ObjectId(rid)}, {"$set": {"status": "rejected"}})
+    await log_action(ADMIN_ID, "رفض سحب", withdrawal["user_id"], f"{withdrawal['amount_usd']}$ تم إعادة {withdrawal['points_deducted']} نقطة")
     try:
         await context.bot.send_message(withdrawal["user_id"], f"❌ تم رفض السحب. تم إعادة {withdrawal['points_deducted']} نقطة.", parse_mode="Markdown")
     except:
@@ -1753,6 +1767,7 @@ async def reject_withdraw(update, context):
     await q.message.delete()
     await admin_withdrawals(update, context)
 
+# ========== تصدير Excel ==========
 async def admin_export(update, context):
     q = update.callback_query
     await q.answer()
@@ -1767,6 +1782,7 @@ async def admin_export(update, context):
             name = "Unknown"
         writer.writerow([user["_id"], name, user.get("points",0), user.get("withdrawable_points",0), user.get("uses",0), user.get("referrals",0), user.get("has_withdrawn_before",False), user.get("last_task_date",""), user.get("total_ads_watched",0), ", ".join(user.get("badges",[])), user.get("level","مبتدئ"), user.get("banned",False), user.get("global_challenge_ads",0)])
     output.seek(0)
+    await log_action(ADMIN_ID, "تصدير بيانات", None, f"تم تصدير {users_col.count_documents({})} مستخدم")
     await q.message.reply_document(document=io.BytesIO(output.getvalue().encode()), filename="users_export.csv", caption="📊 تصدير البيانات")
     await q.message.reply_text("✅ تم التصدير.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 رجوع", callback_data="admin_back")]]))
 
@@ -1777,6 +1793,63 @@ async def handle_nav(update, context):
         await q.message.reply_text("🔧 لوحة الأدمن:", reply_markup=admin_menu())
     elif q.data in ("home", "new"):
         await main_back(update, context)
+
+# ========== دوال المستويات (اختصاراً لأنها طويلة) ==========
+def reduce_pending_level_ads(user_id):
+    u = get_user(user_id)
+    pending = u.get("pending_level_upgrade")
+    if pending:
+        remaining_ads = pending.get("ads_remaining", 0) - 1
+        if remaining_ads <= 0:
+            new_level = pending["target_level"]
+            reward = LEVELS[new_level]["reward"]
+            update_user(user_id, {
+                "level": new_level,
+                "pending_level_upgrade": None,
+                "withdrawable_points": u.get("withdrawable_points", 0) + reward
+            })
+            add_badge(user_id, new_level)
+            try:
+                import asyncio
+                asyncio.create_task(context.bot.send_message(user_id, f"🎉 *تهانينا!* لقد ترقيت إلى مستوى {new_level} وحصلت على {reward} نقطة قابلة للسحب!", parse_mode="Markdown"))
+            except:
+                pass
+        else:
+            update_user(user_id, {"pending_level_upgrade": {"target_level": pending["target_level"], "ads_remaining": remaining_ads}})
+
+def get_next_level(user):
+    current = user.get("level", "مبتدئ")
+    idx = LEVELS_LIST.index(current) if current in LEVELS_LIST else 0
+    if idx + 1 < len(LEVELS_LIST):
+        return LEVELS_LIST[idx + 1]
+    return None
+
+def check_and_process_level_upgrade(user_id):
+    u = get_user(user_id)
+    current = u.get("level", "مبتدئ")
+    next_lvl = get_next_level(u)
+    if not next_lvl:
+        return None
+    highest = u.get("highest_total_points", u["points"] + u["withdrawable_points"])
+    required_points = LEVELS[next_lvl]["points"]
+    required_ads = LEVELS[next_lvl]["unlock_ads"]
+    if highest >= required_points:
+        pending = u.get("pending_level_upgrade")
+        if not pending or pending.get("target_level") != next_lvl:
+            update_user(user_id, {"pending_level_upgrade": {"target_level": next_lvl, "ads_remaining": required_ads}})
+            return None
+        else:
+            if pending.get("ads_remaining", required_ads) <= 0:
+                new_level = next_lvl
+                reward = LEVELS[new_level]["reward"]
+                update_user(user_id, {
+                    "level": new_level,
+                    "pending_level_upgrade": None,
+                    "withdrawable_points": u.get("withdrawable_points", 0) + reward
+                })
+                add_badge(user_id, new_level)
+                return {"new_level": new_level, "reward": reward}
+    return None
 
 # ========== المهام المجدولة ==========
 async def scheduled_tasks(app):
@@ -1917,25 +1990,34 @@ async def scheduled_tasks(app):
 # ========== تشغيل البوت ==========
 def main():
     app = Application.builder().token(TELEGRAM_TOKEN).build()
+    # معالج WebApp
     app.add_handler(MessageHandler(filters.StatusUpdate.WEB_APP_DATA, handle_web_app_data))
+    # تحويل النقاط
     app.add_handler(CallbackQueryHandler(convert_points, pattern="^convert_points$"))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, process_conversion))
+    # كوبونات
     app.add_handler(CallbackQueryHandler(redeem_coupon, pattern="^redeem_coupon$"))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, process_coupon))
+    # المحادثات الرئيسية (البث الجماعي والمحتوى)
     conv = ConversationHandler(
-        entry_points=[CallbackQueryHandler(handle_platform, pattern="^(facebook|instagram|twitter|linkedin|email|ad|article|ideas)$"),
-                      CallbackQueryHandler(weekly, pattern="^weekly$"),
-                      CallbackQueryHandler(admin_broadcast_start, pattern="^admin_broadcast$"),
-                      MessageHandler(filters.TEXT & ~filters.COMMAND, challenge_target)],
+        entry_points=[
+            CallbackQueryHandler(handle_platform, pattern="^(facebook|instagram|twitter|linkedin|email|ad|article|ideas)$"),
+            CallbackQueryHandler(weekly, pattern="^weekly$"),
+            CallbackQueryHandler(admin_broadcast_start, pattern="^admin_broadcast$")
+        ],
         states={
             TOPIC: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_topic)],
             TONE: [CallbackQueryHandler(get_tone, pattern="^tone_")],
             WEEKLY_TOPIC: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_weekly_topic)],
             BROADCAST_MSG: [MessageHandler(filters.TEXT & ~filters.COMMAND, admin_broadcast_send)]
         },
-        fallbacks=[CommandHandler("start", start)]
+        fallbacks=[CommandHandler("start", start)],
+        per_chat=False  # هذا ضروري ليعمل البث الجماعي دون تداخل
     )
     app.add_handler(conv)
+    # معالج تحديات الأصدقاء منفصل
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, challenge_target))
+    # أوامر الأدمن النصية
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("offer", admin_flash_offer))
     app.add_handler(CommandHandler("stopoffer", admin_stop_offer))
@@ -1948,6 +2030,7 @@ def main():
     app.add_handler(CommandHandler("userinfo", admin_user_info))
     app.add_handler(CommandHandler("start_challenge", start_global_challenge))
     app.add_handler(CommandHandler("end_challenge", end_global_challenge))
+    # معالجات الأزرار (CallbackQuery)
     app.add_handler(CallbackQueryHandler(content_menu, pattern="^content_menu$"))
     app.add_handler(CallbackQueryHandler(earn_menu, pattern="^earn_menu$"))
     app.add_handler(CallbackQueryHandler(account_menu, pattern="^account_menu$"))
@@ -1977,14 +2060,14 @@ def main():
     app.add_handler(CallbackQueryHandler(admin_churn_analysis, pattern="^admin_churn$"))
     app.add_handler(CallbackQueryHandler(churn_remind, pattern="^churn_remind_"))
     app.add_handler(CallbackQueryHandler(churn_gift, pattern="^churn_gift_"))
-
+    # أزرار الأدمن المساعدة
     app.add_handler(CallbackQueryHandler(admin_add_points_btn, pattern="^admin_add_points_btn$"))
     app.add_handler(CallbackQueryHandler(admin_remove_points_btn, pattern="^admin_remove_points_btn$"))
     app.add_handler(CallbackQueryHandler(admin_ban_btn, pattern="^admin_ban_btn$"))
     app.add_handler(CallbackQueryHandler(admin_unban_btn, pattern="^admin_unban_btn$"))
     app.add_handler(CallbackQueryHandler(admin_list_banned_btn, pattern="^admin_list_banned_btn$"))
     app.add_handler(CallbackQueryHandler(admin_userinfo_btn, pattern="^admin_userinfo_btn$"))
-
+    # المهام المجدولة
     loop = asyncio.get_event_loop()
     loop.create_task(scheduled_tasks(app))
     app.run_polling()
