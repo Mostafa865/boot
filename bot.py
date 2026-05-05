@@ -1068,10 +1068,10 @@ async def handle_web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE
         if u.get("banned", False):
             await update.message.reply_text("⛔ أنت محظور.")
             return
-                  # فحص السرعة: منع الإعلانات المتكررة بسرعة
+                         # فحص السرعة (يمنع الإعلانات المتكررة بسرعة)
         last_ad_time = context.user_data.get('last_ad_time', 0)
         now = datetime.utcnow().timestamp()
-        if now - last_ad_time < 10:   # أقل من 10 ثواني
+        if now - last_ad_time < 10:
             await update.message.reply_text("⚠️ أنت تشاهد إعلانات بسرعة كبيرة. انتظر 10 ثوانٍ ثم حاول مرة أخرى.")
             return
         context.user_data['last_ad_time'] = now
