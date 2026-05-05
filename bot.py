@@ -1,4 +1,4 @@
-# v21.1 - النسخة النهائية مع التحديات الجماعية العالمية وسجل التدقيق (Audit Log)
+# v21.2 - النسخة النهائية مع التحديات الجماعية + سجل التدقيق + تحليل التسرب
 import logging, random, csv, io, asyncio
 from datetime import datetime, timedelta
 from bson.objectid import ObjectId
@@ -71,7 +71,7 @@ offers_col = db["flash_offers"]
 challenges_col = db["challenges"]
 coupons_col = db["coupons"]
 global_challenges_col = db["global_challenges"]
-audit_col = db["audit_log"]  # جديد: سجل التدقيق
+audit_col = db["audit_log"]          # سجل التدقيق
 
 client = openai.OpenAI(base_url="https://openrouter.ai/api/v1", api_key=OPENROUTER_API_KEY)
 
@@ -228,52 +228,116 @@ def can_add_commission(user_id, amount):
         return True
     return False
 
-# ========== سجل التدقيق (Audit Log) ==========
+# ========== سجل التدقيق ==========
 async def log_action(admin_id: int, action_type: str, target_user_id: int = None, details: str = ""):
-    """تسجيل إجراء في سجل التدقيق"""
     try:
-        log_entry = {
+        audit_col.insert_one({
             "timestamp": datetime.utcnow(),
             "admin_id": admin_id,
             "action_type": action_type,
             "target_user_id": target_user_id,
             "details": details
-        }
-        audit_col.insert_one(log_entry)
+        })
     except Exception as e:
         print(f"خطأ في تسجيل التدقيق: {e}")
 
 async def admin_audit_log(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """عرض سجل التدقيق (آخر 50 إجراء) مع أزرار تنقل"""
     q = update.callback_query
     await q.answer()
     if q.from_user.id != ADMIN_ID:
         await q.answer("⛔ غير مصرح.", show_alert=True)
         return
-    # استرجاع الصفحة من callback_data
     page = int(q.data.split("_")[1]) if len(q.data.split("_")) > 1 else 0
     limit = 10
     skip = page * limit
-    total_logs = audit_col.count_documents({})
+    total = audit_col.count_documents({})
     logs = audit_col.find({}).sort("timestamp", -1).skip(skip).limit(limit)
-    text = "📋 *سجل التدقيق (آخر الإجراءات)*\n\n"
+    text = "📋 *سجل التدقيق*\n\n"
     for log in logs:
         time_str = log["timestamp"].strftime("%Y-%m-%d %H:%M")
         admin = log["admin_id"]
         action = log["action_type"]
-        target = f" → المستخدم {log['target_user_id']}" if log.get("target_user_id") else ""
+        target = f" → {log['target_user_id']}" if log.get("target_user_id") else ""
         details = f" ({log['details']})" if log.get("details") else ""
         text += f"• `{time_str}`: {action}{target}{details}\n"
     if not logs:
         text += "لا توجد إجراءات مسجلة بعد."
-    # أزرار التنقل
     kb = []
     if page > 0:
         kb.append(InlineKeyboardButton("⬅️ السابق", callback_data=f"admin_audit_log_{page-1}"))
-    if (page + 1) * limit < total_logs:
+    if (page + 1) * limit < total:
         kb.append(InlineKeyboardButton("التالي ➡️", callback_data=f"admin_audit_log_{page+1}"))
     kb.append(InlineKeyboardButton("🔙 رجوع", callback_data="admin_back"))
     await q.message.reply_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([kb]))
+
+# ========== تحليل التسرب ==========
+async def get_inactive_users(days=7):
+    cutoff = datetime.utcnow() - timedelta(days=days)
+    inactive = users_col.find({
+        "$or": [
+            {"last_ad_date": {"$lt": cutoff.strftime("%Y-%m-%d")}},
+            {"last_ad_date": {"$exists": False}}
+        ],
+        "banned": False
+    }).sort("last_ad_date", 1).limit(20)
+    return list(inactive)
+
+async def admin_churn_analysis(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+    if q.from_user.id != ADMIN_ID:
+        await q.answer("⛔ غير مصرح.", show_alert=True)
+        return
+    inactive = await get_inactive_users(7)
+    if not inactive:
+        await q.message.reply_text("✅ لا يوجد مستخدمون غير نشطين خلال الأسبوع الماضي.")
+        return
+    text = "📉 *تحليل التسرب (غير نشطين لأكثر من 7 أيام)*\n\n"
+    kb = []
+    for user in inactive[:10]:
+        uid = user["_id"]
+        try:
+            name = (await context.bot.get_chat(int(uid))).first_name
+        except:
+            name = f"مستخدم {uid[-4:]}"
+        last_ad = user.get("last_ad_date", "غير معروف")
+        total_ads = user.get("total_ads_watched", 0)
+        text += f"• {name} (`{uid}`) - آخر نشاط: {last_ad} - إجمالي إعلانات: {total_ads}\n"
+        kb.append([InlineKeyboardButton(f"📢 تذكير {name}", callback_data=f"churn_remind_{uid}"),
+                   InlineKeyboardButton(f"🎁 هدية {name}", callback_data=f"churn_gift_{uid}")])
+    kb.append([InlineKeyboardButton("🔙 رجوع", callback_data="admin_back")])
+    await q.message.reply_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(kb))
+
+async def churn_remind(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+    if q.from_user.id != ADMIN_ID:
+        await q.answer("⛔ غير مصرح.", show_alert=True)
+        return
+    uid = int(q.data.split("_")[2])
+    try:
+        await context.bot.send_message(uid, "🔥 *تذكير عودة*\nنحن نفتقدك! اشترك مرة أخرى في البوت واحصل على *500 نقطة قابلة للسحب* عند مشاهدة إعلان اليوم. استخدم الكود `WELCOMEBACK` (صلاحية 24 ساعة).", parse_mode="Markdown")
+        await log_action(ADMIN_ID, "إرسال تذكير تسرب", uid, "")
+        await q.message.reply_text(f"✅ تم إرسال تذكير للمستخدم {uid}.")
+    except Exception as e:
+        await q.message.reply_text(f"❌ فشل الإرسال: {str(e)}")
+
+async def churn_gift(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+    if q.from_user.id != ADMIN_ID:
+        await q.answer("⛔ غير مصرح.", show_alert=True)
+        return
+    uid = int(q.data.split("_")[2])
+    try:
+        user = get_user(uid)
+        new_w = user.get("withdrawable_points", 0) + 500
+        update_user(uid, {"withdrawable_points": new_w})
+        await context.bot.send_message(uid, "🎁 *هدية عودة*!\nتم إضافة *500 نقطة قابلة للسحب* إلى رصيدك. تفضل بزيارتنا مرة أخرى!", parse_mode="Markdown")
+        await log_action(ADMIN_ID, "إهداء نقاط للتسرب", uid, "500 نقطة")
+        await q.message.reply_text(f"✅ تم إهداء 500 نقطة للمستخدم {uid}.")
+    except Exception as e:
+        await q.message.reply_text(f"❌ فشل الإهداء: {str(e)}")
 
 # ========== عجلة الحظ ==========
 def spin_wheel():
@@ -314,7 +378,7 @@ async def wheel_of_fortune(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.message.reply_text(
         "💻 *للاب فقط:*",
         parse_mode="Markdown",
-       reply_markup=InlineKeyboardMarkup([
+        reply_markup=InlineKeyboardMarkup([
             [InlineKeyboardButton("🎡 شاهد الإعلان واستدير (لاب)", web_app=WebAppInfo(url=WHEEL_URL))]
         ])
     )
@@ -340,7 +404,6 @@ async def create_coupon(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "created_at": datetime.utcnow()
         }
         coupons_col.insert_one(coupon)
-        # تسجيل في سجل التدقيق
         await log_action(ADMIN_ID, "إنشاء كوبون", None, f"الكود: {code}, النقاط: {points}, المدة: {days} أيام, الحد: {max_uses}")
         await update.message.reply_text(
             f"✅ تم إنشاء الكوبون:\n"
@@ -425,7 +488,6 @@ async def admin_flash_offer(update, context):
         start = datetime.utcnow()
         end = start + timedelta(minutes=duration)
         offers_col.update_one({}, {"$set": {"active": True, "multiplier": multiplier, "start_time": start, "end_time": end}}, upsert=True)
-        # تسجيل في سجل التدقيق
         await log_action(ADMIN_ID, "تفعيل عرض موقوت", None, f"مضاعف ×{multiplier} لمدة {duration} دقيقة")
         await update.message.reply_text(f"✅ عرض موقوت: ×{multiplier} لمدة {duration} دقيقة.")
     except:
@@ -603,7 +665,7 @@ async def help_callback(update, context):
             f"1️⃣4️⃣ تحويل النقاط: حوِّل نقاطك العادية إلى نقابلة للسحب بنسبة {CONVERSION_RATE}% (حد {MAX_DAILY_CONVERSION} نقطة عادية يومياً).\n"
             f"1️⃣5️⃣ المستويات: تترقى إلى مستويات أعلى عند جمع النقاط ومشاهدة إعلانات محددة. كل مستوى يمنح مضاعفاً أكبر ومكافآت.\n"
             f"1️⃣6️⃣ كوبونات الخصم: استخدم أكواد خصم للحصول على نقاط إضافية (تتطلب إعلاناً).\n"
-            f"1️⃣7️⃣ التحدي العالمي: يعلن الأدمن تحدياً جماعياً (مثلاً مليون إعلان في أسبوع)، وتوزع الجوائز حسب المشاركة.")
+            f"1️⃣7️⃣ التحدي العالمي: يعلن الأدمن تحدياً جماعياً، وتوزع الجوائز حسب المشاركة.")
     kb = [[InlineKeyboardButton("🔙 رجوع", callback_data="main_back")]]
     await q.edit_message_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(kb))
 
@@ -675,6 +737,7 @@ def admin_menu():
         [InlineKeyboardButton("📢 رسالة جماعية", callback_data="admin_broadcast")],
         [InlineKeyboardButton("🌍 إدارة التحدي العالمي", callback_data="admin_global_challenge")],
         [InlineKeyboardButton("📋 سجل التدقيق", callback_data="admin_audit_log_0")],
+        [InlineKeyboardButton("📉 تحليل التسرب", callback_data="admin_churn")],
         [InlineKeyboardButton("📁 تصدير Excel", callback_data="admin_export")]
     ]
     return InlineKeyboardMarkup(kb)
@@ -801,7 +864,7 @@ async def admin_global_challenge_btn(update: Update, context: ContextTypes.DEFAU
     )
     await q.message.reply_text(text, parse_mode="Markdown")
 
-# ========== أوامر الأدمن الجديدة ==========
+# ========== أوامر الأدمن ==========
 async def admin_add_points(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         await update.message.reply_text("⛔ غير مصرح.")
@@ -979,7 +1042,7 @@ async def admin_userinfo_btn(update: Update, context: ContextTypes.DEFAULT_TYPE)
     await q.answer()
     await q.message.reply_text("🔍 *معلومات مستخدم*\nأرسل الأمر: `/userinfo <user_id>`", parse_mode="Markdown")
 
-# ========== دوال تحويل النقاط ==========
+# ========== تحويل النقاط ==========
 async def convert_points(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -1319,16 +1382,10 @@ async def handle_web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE
                     coupons_col.update_one({"_id": coupon["_id"]}, {"$inc": {"used_count": 1}})
                     new_withdrawable = u["withdrawable_points"] + points
                     update_user(uid, {"withdrawable_points": new_withdrawable, "pending_action": None})
-                    await update.message.reply_text(
-                        f"🎟️ *تم تفعيل الكود بنجاح!* +{points} نقطة قابلة للسحب.",
-                        parse_mode="Markdown"
-                    )
+                    await update.message.reply_text(f"🎟️ *تم تفعيل الكود بنجاح!* +{points} نقطة قابلة للسحب.", parse_mode="Markdown")
                 else:
                     update_user(uid, {"pending_action": None})
-                    await update.message.reply_text(
-                        "❌ الكوبون غير صالح (انتهت صلاحيته أو تجاوز الحد الأقصى).",
-                        parse_mode="Markdown"
-                    )
+                    await update.message.reply_text("❌ الكوبون غير صالح (انتهت صلاحيته أو تجاوز الحد الأقصى).", parse_mode="Markdown")
 
     elif data == "bonus_ad_watched":
         u = get_user(uid)
@@ -1917,6 +1974,10 @@ def main():
     app.add_handler(CallbackQueryHandler(global_challenge_status, pattern="^global_challenge$"))
     app.add_handler(CallbackQueryHandler(admin_global_challenge_btn, pattern="^admin_global_challenge$"))
     app.add_handler(CallbackQueryHandler(admin_audit_log, pattern="^admin_audit_log_"))
+    app.add_handler(CallbackQueryHandler(admin_churn_analysis, pattern="^admin_churn$"))
+    app.add_handler(CallbackQueryHandler(churn_remind, pattern="^churn_remind_"))
+    app.add_handler(CallbackQueryHandler(churn_gift, pattern="^churn_gift_"))
+
     app.add_handler(CallbackQueryHandler(admin_add_points_btn, pattern="^admin_add_points_btn$"))
     app.add_handler(CallbackQueryHandler(admin_remove_points_btn, pattern="^admin_remove_points_btn$"))
     app.add_handler(CallbackQueryHandler(admin_ban_btn, pattern="^admin_ban_btn$"))
