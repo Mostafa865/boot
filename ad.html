@@ -22,7 +22,6 @@
         let tg = window.Telegram.WebApp;
         tg.ready();
         tg.expand();
-        let clicked = false;
 
         async function watchAd() {
             const btn = document.getElementById('watchBtn');
@@ -32,17 +31,10 @@
 
             try {
                 await show_10959746();
-                statusDiv.innerText = "✅ تم مشاهدة الإعلان!";
-                tg.MainButton.setText("🎁 استلام النقاط");
-                tg.MainButton.show();
-                tg.MainButton.onClick(() => {
-                    if (clicked) return;
-                    clicked = true;
-                    tg.sendData('ad_watched');
-                    tg.MainButton.setText("✅ تم!");
-                    tg.MainButton.hide();
-                    setTimeout(() => tg.close(), 300);
-                });
+                statusDiv.innerText = "✅ تم! جاري إضافة النقاط...";
+                // بعت البيانات وقفل تلقائي
+                tg.sendData('ad_watched');
+                setTimeout(() => tg.close(), 500);
             } catch(e) {
                 statusDiv.innerText = "❌ حاول مجدداً.";
                 btn.disabled = false;
