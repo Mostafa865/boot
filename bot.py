@@ -610,7 +610,7 @@ def admin_menu():
           [InlineKeyboardButton("💰 طلبات السحب", callback_data="admin_withdrawals")],
           [InlineKeyboardButton("📢 رسالة جماعية", callback_data="admin_broadcast")],
           [InlineKeyboardButton("🌍 إدارة التحدي العالمي", callback_data="admin_global_challenge")],
-          [InlineKeyboardButton("📋 سجل التدقيق", callback_data="admin_audit_log_0")],
+           InlineKeyboardButton("📋 سجل التدقيق", callback_data="test_audit")
           [InlineKeyboardButton("📉 تحليل التسرب", callback_data="admin_churn")],
           [InlineKeyboardButton("📁 تصدير Excel", callback_data="admin_export")]]
     return InlineKeyboardMarkup(kb)
@@ -637,6 +637,15 @@ async def start_global_challenge(update: Update, context: ContextTypes.DEFAULT_T
         await update.message.reply_text(f"✅ *تم بدء التحدي العالمي!*\n🎯 الهدف: {target_ads} إعلان جماعياً\n🏆 الجائزة الكلية: {prize_pool} نقطة قابلة للسحب\n⏳ المدة: {days} يوم (تنتهي {end_date.strftime('%Y-%m-%d %H:%M UTC')})\n\nشارك مع الجميع لتحقيق الهدف واحصل على حصتك من الجائزة!", parse_mode="Markdown")
     except Exception as e:
         await update.message.reply_text(f"❌ خطأ: استخدم `/start_challenge <هدف_الإعلانات> <جائزة_كلية> [أيام]`\n{str(e)}")
+
+
+
+async def test_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    await query.message.reply_text("✅ الزر يعمل! الآن نصلح سجل التدقيق.")
+
+
 
 async def end_global_challenge(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
@@ -1761,8 +1770,8 @@ def main():
     ]
     for pattern, handler in callbacks:
         app.add_handler(CallbackQueryHandler(handler, pattern=pattern))
-    app.add_handler(CallbackQueryHandler(admin_audit_log, pattern="^admin_audit_log_"))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_all_text))
+app.add_handler(CallbackQueryHandler(test_callback, pattern="^test_audit$"))
+app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_all_text))
 
     loop = asyncio.get_event_loop()
     loop.create_task(scheduled_tasks(app))
