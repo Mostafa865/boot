@@ -610,7 +610,7 @@ def admin_menu():
           [InlineKeyboardButton("💰 طلبات السحب", callback_data="admin_withdrawals")],
           [InlineKeyboardButton("📢 رسالة جماعية", callback_data="admin_broadcast")],
           [InlineKeyboardButton("🌍 إدارة التحدي العالمي", callback_data="admin_global_challenge")],
-           InlineKeyboardButton("📋 سجل التدقيق", callback_data="test_audit")
+          [InlineKeyboardButton("📋 سجل التدقيق", callback_data="admin_audit_log_0")],
           [InlineKeyboardButton("📉 تحليل التسرب", callback_data="admin_churn")],
           [InlineKeyboardButton("📁 تصدير Excel", callback_data="admin_export")]]
     return InlineKeyboardMarkup(kb)
