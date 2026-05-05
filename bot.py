@@ -217,6 +217,17 @@ async def log_action(admin_id: int, action_type: str, target_user_id: int = None
         print(f"❌ [AUDIT] فشل تسجيل الإجراء '{action_type}': {e}")
         traceback.print_exc()
 
+
+def log_action_sync(admin_id: int, action_type: str, target_user_id: int = None, details: str = ""):
+    try:
+        doc = {"timestamp": datetime.utcnow(), "admin_id": admin_id, "action_type": action_type,
+               "target_user_id": target_user_id, "details": details}
+        result = audit_col.insert_one(doc)
+        print(f"✅ [AUDIT] '{action_type}' (ID: {result.inserted_id})")
+    except Exception as e:
+        print(f"❌ [AUDIT] فشل: {e}")
+
+
 async def admin_audit_log(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
@@ -286,7 +297,7 @@ async def churn_remind(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = int(q.data.split("_")[2])
     try:
         await context.bot.send_message(uid, "🔥 *تذكير عودة*\nنحن نفتقدك! اشترك مرة أخرى في البوت واحصل على *500 نقطة قابلة للسحب* عند مشاهدة إعلان اليوم. استخدم الكود `WELCOMEBACK` (صلاحية 24 ساعة).", parse_mode="Markdown")
-        await log_action(ADMIN_ID, "إرسال تذكير تسرب", uid, "")
+        log_action_sync(ADMIN_ID, "إرسال تذكير تسرب", uid, "")
         await q.message.reply_text(f"✅ تم إرسال تذكير للمستخدم {uid}.")
     except Exception as e:
         await q.message.reply_text(f"❌ فشل الإرسال: {str(e)}")
@@ -303,7 +314,7 @@ async def churn_gift(update: Update, context: ContextTypes.DEFAULT_TYPE):
         new_w = user.get("withdrawable_points", 0) + 500
         update_user(uid, {"withdrawable_points": new_w})
         await context.bot.send_message(uid, "🎁 *هدية عودة*!\nتم إضافة *500 نقطة قابلة للسحب* إلى رصيدك. تفضل بزيارتنا مرة أخرى!", parse_mode="Markdown")
-        await log_action(ADMIN_ID, "إهداء نقاط للتسرب", uid, "500 نقطة")
+        log_action_sync(ADMIN_ID, "إهداء نقاط للتسرب", uid, "500 نقطة")
         await q.message.reply_text(f"✅ تم إهداء 500 نقطة للمستخدم {uid}.")
     except Exception as e:
         await q.message.reply_text(f"❌ فشل الإهداء: {str(e)}")
@@ -347,7 +358,7 @@ async def create_coupon(update: Update, context: ContextTypes.DEFAULT_TYPE):
         expires_at = datetime.utcnow() + timedelta(days=days)
         coupon = {"code": code, "points": points, "max_uses": max_uses, "used_count": 0, "expires_at": expires_at, "created_by": ADMIN_ID, "created_at": datetime.utcnow()}
         coupons_col.insert_one(coupon)
-        await log_action(ADMIN_ID, "إنشاء كوبون", None, f"الكود: {code}, النقاط: {points}, المدة: {days} أيام, الحد: {max_uses}")
+        log_action_sync(ADMIN_ID, "إنشاء كوبون", None, f"الكود: {code}, النقاط: {points}, المدة: {days} أيام, الحد: {max_uses}")
         await update.message.reply_text(f"✅ تم إنشاء الكوبون:\n• الكود: `{code}`\n• النقاط: {points}\n• الصلاحية: {days} يوم\n• الحد الأقصى للاستخدام: {max_uses}", parse_mode="Markdown")
     except Exception as e:
         await update.message.reply_text(f"❌ خطأ: استخدم `/createcoupon <كود> <نقاط> <أيام> <حد_الاستخدام>`\n{str(e)}")
@@ -401,7 +412,7 @@ async def admin_flash_offer(update, context):
         start = datetime.utcnow()
         end = start + timedelta(minutes=duration)
         offers_col.update_one({}, {"$set": {"active": True, "multiplier": multiplier, "start_time": start, "end_time": end}}, upsert=True)
-        await log_action(ADMIN_ID, "تفعيل عرض موقوت", None, f"مضاعف ×{multiplier} لمدة {duration} دقيقة")
+        log_action_sync(ADMIN_ID, "تفعيل عرض موقوت", None, f"مضاعف ×{multiplier} لمدة {duration} دقيقة")
         await update.message.reply_text(f"✅ عرض موقوت: ×{multiplier} لمدة {duration} دقيقة.")
     except:
         await update.message.reply_text("استخدام: /offer <مضاعف> <مدة_دقائق>")
@@ -409,7 +420,7 @@ async def admin_flash_offer(update, context):
 async def admin_stop_offer(update, context):
     if update.effective_user.id != ADMIN_ID: return
     offers_col.update_one({}, {"$set": {"active": False}})
-    await log_action(ADMIN_ID, "إيقاف عرض موقوت", None, "")
+    log_action_sync(ADMIN_ID, "إيقاف عرض موقوت", None, "")
     await update.message.reply_text("✅ تم إيقاف العرض.")
 
 # ========== تحديات الأصدقاء ==========
@@ -619,7 +630,7 @@ async def start_global_challenge(update: Update, context: ContextTypes.DEFAULT_T
                      "start_date": datetime.utcnow(), "end_date": end_date, "created_by": ADMIN_ID}
         global_challenges_col.insert_one(challenge)
         users_col.update_many({}, {"$set": {"global_challenge_ads": 0, "global_challenge_reward_claimed": False}})
-        await log_action(ADMIN_ID, "بدء تحدٍ عالمي", None, f"الهدف: {target_ads} إعلان, الجائزة: {prize_pool} نقطة, المدة: {days} يوم")
+        log_action_sync(ADMIN_ID, "بدء تحدٍ عالمي", None, f"الهدف: {target_ads} إعلان, الجائزة: {prize_pool} نقطة, المدة: {days} يوم")
         await update.message.reply_text(f"✅ *تم بدء التحدي العالمي!*\n🎯 الهدف: {target_ads} إعلان جماعياً\n🏆 الجائزة الكلية: {prize_pool} نقطة قابلة للسحب\n⏳ المدة: {days} يوم (تنتهي {end_date.strftime('%Y-%m-%d %H:%M UTC')})\n\nشارك مع الجميع لتحقيق الهدف واحصل على حصتك من الجائزة!", parse_mode="Markdown")
     except Exception as e:
         await update.message.reply_text(f"❌ خطأ: استخدم `/start_challenge <هدف_الإعلانات> <جائزة_كلية> [أيام]`\n{str(e)}")
@@ -629,7 +640,7 @@ async def end_global_challenge(update: Update, context: ContextTypes.DEFAULT_TYP
         await update.message.reply_text("⛔ غير مصرح.")
         return
     await process_global_challenge_end(context.bot, force=True)
-    await log_action(ADMIN_ID, "إنهاء التحدي العالمي (يدوي)", None, "")
+    log_action_sync(ADMIN_ID, "إنهاء التحدي العالمي (يدوي)", None, "")
     await update.message.reply_text("✅ تم إنهاء التحدي العالمي وتوزيع الجوائز (إن تحقق الهدف).")
 
 async def global_challenge_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -711,12 +722,12 @@ async def admin_add_points(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if point_type == "normal":
             new_points = user["points"] + amount
             update_user(user_id, {"points": new_points})
-            await log_action(ADMIN_ID, "إضافة نقاط عادية", user_id, f"{amount} نقطة")
+            log_action_sync(ADMIN_ID, "إضافة نقاط عادية", user_id, f"{amount} نقطة")
             await update.message.reply_text(f"✅ تم إضافة {amount} نقطة عادية للمستخدم `{user_id}`. رصيده الآن: *{new_points}*", parse_mode="Markdown")
         else:
             new_w = user["withdrawable_points"] + amount
             update_user(user_id, {"withdrawable_points": new_w})
-            await log_action(ADMIN_ID, "إضافة نقاط قابلة للسحب", user_id, f"{amount} نقطة")
+            log_action_sync(ADMIN_ID, "إضافة نقاط قابلة للسحب", user_id, f"{amount} نقطة")
             await update.message.reply_text(f"✅ تم إضافة {amount} نقطة قابلة للسحب للمستخدم `{user_id}`. رصيده الآن: *{new_w}*", parse_mode="Markdown")
     except Exception as e:
         await update.message.reply_text(f"❌ خطأ: استخدم `/addpoints <user_id> <amount> [normal|withdrawable]`\n{str(e)}")
@@ -739,7 +750,7 @@ async def admin_remove_points(update: Update, context: ContextTypes.DEFAULT_TYPE
                 return
             new_points = user["points"] - amount
             update_user(user_id, {"points": new_points})
-            await log_action(ADMIN_ID, "خصم نقاط عادية", user_id, f"{amount} نقطة")
+            log_action_sync(ADMIN_ID, "خصم نقاط عادية", user_id, f"{amount} نقطة")
             await update.message.reply_text(f"✅ تم خصم {amount} نقطة عادية من المستخدم `{user_id}`. رصيده الآن: *{new_points}*", parse_mode="Markdown")
         else:
             if user["withdrawable_points"] < amount:
@@ -747,7 +758,7 @@ async def admin_remove_points(update: Update, context: ContextTypes.DEFAULT_TYPE
                 return
             new_w = user["withdrawable_points"] - amount
             update_user(user_id, {"withdrawable_points": new_w})
-            await log_action(ADMIN_ID, "خصم نقاط قابلة للسحب", user_id, f"{amount} نقطة")
+            log_action_sync(ADMIN_ID, "خصم نقاط قابلة للسحب", user_id, f"{amount} نقطة")
             await update.message.reply_text(f"✅ تم خصم {amount} نقطة قابلة للسحب من المستخدم `{user_id}`. رصيده الآن: *{new_w}*", parse_mode="Markdown")
     except Exception as e:
         await update.message.reply_text(f"❌ خطأ: استخدم `/removepoints <user_id> <amount> [normal|withdrawable]`\n{str(e)}")
@@ -763,7 +774,7 @@ async def admin_ban(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(f"⚠️ المستخدم `{user_id}` محظور بالفعل.")
             return
         update_user(user_id, {"banned": True})
-        await log_action(ADMIN_ID, "حظر مستخدم", user_id, "")
+        log_action_sync(ADMIN_ID, "حظر مستخدم", user_id, "")
         await update.message.reply_text(f"✅ تم حظر المستخدم `{user_id}`. لن يتمكن من استخدام البوت.")
         try:
             await context.bot.send_message(user_id, "⛔ لقد تم حظرك من استخدام هذا البوت. للمزيد من المعلومات، تواصل مع الإدارة.")
@@ -783,7 +794,7 @@ async def admin_unban(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(f"⚠️ المستخدم `{user_id}` غير محظور.")
             return
         update_user(user_id, {"banned": False})
-        await log_action(ADMIN_ID, "إلغاء حظر مستخدم", user_id, "")
+        log_action_sync(ADMIN_ID, "إلغاء حظر مستخدم", user_id, "")
         await update.message.reply_text(f"✅ تم إلغاء حظر المستخدم `{user_id}`. يمكنه الآن استخدام البوت.")
         try:
             await context.bot.send_message(user_id, "✅ تم إلغاء حظرك. يمكنك الآن استخدام البوت مجدداً.")
@@ -1395,12 +1406,27 @@ async def admin_broadcast_send(update: Update, context: ContextTypes.DEFAULT_TYP
         return ConversationHandler.END
     msg = update.message.text
     if not msg:
-        await update.message.reply_text("❌ لا يمكن إرسال رسالة فارغة.")
+        await update.message.reply_text("❌ رسالة فارغة.")
         return ConversationHandler.END
-    status_msg = await update.message.reply_text("⏳ جاري إرسال الرسالة إلى جميع المستخدمين...")
+    status_msg = await update.message.reply_text("⏳ جاري الإرسال...")
     success = 0
     fail = 0
-    total_users = users_col.count_documents({})
+    all_users = list(users_col.find({}, {"_id": 1}))
+    for user_doc in all_users:
+        try:
+            uid = int(user_doc["_id"])
+            await context.bot.send_message(uid, f"📢 *رسالة من الإدارة:*\n\n{msg}", parse_mode="Markdown")
+            success += 1
+        except Exception:
+            fail += 1
+        await asyncio.sleep(0.05)
+    log_action_sync(ADMIN_ID, "بث جماعي", None, f"نجاح: {success}, فشل: {fail}")
+    await status_msg.edit_text(
+        f"✅ *تم البث*\n✓ نجاح: {success}\n✗ فشل: {fail}\n📊 إجمالي: {len(all_users)}",
+        parse_mode="Markdown"
+    )
+    return ConversationHandler.END
+  
     async def send_to_user(uid):
         try:
             await context.bot.send_message(uid, f"📢 *رسالة من الإدارة:*\n\n{msg}", parse_mode="Markdown")
@@ -1423,7 +1449,7 @@ async def admin_broadcast_send(update: Update, context: ContextTypes.DEFAULT_TYP
             success += sum(results)
             fail += len(results) - sum(results)
         await asyncio.sleep(1)
-    await log_action(ADMIN_ID, "بث جماعي", None, f"تم الإرسال لـ {success} مستخدم، فشل {fail} من {total_users}")
+    log_action_sync(ADMIN_ID, "بث جماعي", None, f"تم الإرسال لـ {success} مستخدم، فشل {fail} من {total_users}")
     await status_msg.edit_text(f"✅ *تم البث الجماعي*\n✓ نجاح: {success}\n✗ فشل: {fail}\n📊 إجمالي المستخدمين: {total_users}", parse_mode="Markdown")
     return ConversationHandler.END
 
@@ -1459,7 +1485,7 @@ async def approve_withdraw(update, context):
         await q.message.reply_text("الطلب غير موجود.")
         return
     withdrawals_col.update_one({"_id": ObjectId(rid)}, {"$set": {"status": "approved"}})
-    await log_action(ADMIN_ID, "قبول سحب", withdrawal["user_id"], f"{withdrawal['amount_usd']}$")
+    log_action_sync(ADMIN_ID, "قبول سحب", withdrawal["user_id"], f"{withdrawal['amount_usd']}$")
     try:
         await context.bot.send_message(withdrawal["user_id"], f"✅ تمت الموافقة على سحب {withdrawal['amount_usd']}$.", parse_mode="Markdown")
     except:
@@ -1480,7 +1506,7 @@ async def reject_withdraw(update, context):
     u = get_user(withdrawal["user_id"])
     update_user(withdrawal["user_id"], {"withdrawable_points": u.get("withdrawable_points", 0) + withdrawal["points_deducted"]})
     withdrawals_col.update_one({"_id": ObjectId(rid)}, {"$set": {"status": "rejected"}})
-    await log_action(ADMIN_ID, "رفض سحب", withdrawal["user_id"], f"{withdrawal['amount_usd']}$ تم إعادة {withdrawal['points_deducted']} نقطة")
+    log_action_sync(ADMIN_ID, "رفض سحب", withdrawal["user_id"], f"{withdrawal['amount_usd']}$ تم إعادة {withdrawal['points_deducted']} نقطة")
     try:
         await context.bot.send_message(withdrawal["user_id"], f"❌ تم رفض السحب. تم إعادة {withdrawal['points_deducted']} نقطة.", parse_mode="Markdown")
     except:
@@ -1504,7 +1530,7 @@ async def admin_export(update, context):
             name = "Unknown"
         writer.writerow([user["_id"], name, user.get("points",0), user.get("withdrawable_points",0), user.get("uses",0), user.get("referrals",0), user.get("has_withdrawn_before",False), user.get("last_task_date",""), user.get("total_ads_watched",0), ", ".join(user.get("badges",[])), user.get("level","مبتدئ"), user.get("banned",False), user.get("global_challenge_ads",0)])
     output.seek(0)
-    await log_action(ADMIN_ID, "تصدير بيانات", None, f"تم تصدير {users_col.count_documents({})} مستخدم")
+    log_action_sync(ADMIN_ID, "تصدير بيانات", None, f"تم تصدير {users_col.count_documents({})} مستخدم")
     await q.message.reply_document(document=io.BytesIO(output.getvalue().encode()), filename="users_export.csv", caption="📊 تصدير البيانات")
     await q.message.reply_text("✅ تم التصدير.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 رجوع", callback_data="admin_back")]]))
 
