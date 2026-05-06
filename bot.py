@@ -1250,7 +1250,7 @@ async def handle_web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 
 
-        elif data == "box_ad_watched":
+    elif data == "box_ad_watched":
         u = get_user(uid)
         if u.get("banned", False):
             await update.message.reply_text("⛔ أنت محظور.")
