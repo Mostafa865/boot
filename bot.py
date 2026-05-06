@@ -1408,11 +1408,11 @@ async def watch_ad(update, context):
         update_user(uid, {"ad_watch_today": 0, "last_ad_date": today})
         u["ad_watch_today"] = 0
   # جلب الحد حسب مستوى المستخدم
-user_level = u.get("level", "مبتدئ")
-max_ads_user = LEVELS.get(user_level, {}).get("unlock_ads", 5)
-if u.get("ad_watch_today", 0) >= max_ads_user:
-    await q.message.reply_text(f"❌ لقد استنفذت حدك اليومي ({max_ads_user} إعلان). مستواك: {user_level}", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏠 القائمة", callback_data="main_back")]]))
-    return
+    user_level = u.get("level", "مبتدئ")
+    max_ads_user = LEVELS.get(user_level, {}).get("unlock_ads", 5)
+    if u.get("ad_watch_today", 0) >= max_ads_user:
+        await q.message.reply_text(f"❌ لقد استنفذت حدك اليومي ({max_ads_user} إعلان). مستواك: {user_level}", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏠 القائمة", callback_data="main_back")]]))
+        return
   
     level_multiplier = LEVELS.get(u.get("level", "مبتدئ"), LEVELS["مبتدئ"])["multiplier"]
     mul = update_ad_streak(uid, today)
