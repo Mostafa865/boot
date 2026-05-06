@@ -1327,7 +1327,8 @@ async def handle_web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE
             )
         else:
             await update.message.reply_text("⚠️ لا يوجد طلب عجلة حظ معلق.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏠 القائمة", callback_data="main_back")]]))
-async def mystery_box(update, context):
+          
+async def mystery_box(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
     u = get_user(q.from_user.id)
@@ -1335,7 +1336,7 @@ async def mystery_box(update, context):
         await q.answer("⛔ أنت محظور", show_alert=True)
         return
     if u.get("last_box_date") == datetime.utcnow().strftime("%Y-%m-%d"):
-        await q.message.reply_text("❌ فتحت الصندوق اليوم!", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏠 القائمة", callback_data="main_back")]]))
+        await q.message.reply_text("❌ لقد فتحت الصندوق اليوم! عاود غداً.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 رجوع", callback_data="main_back")]]))
         return
     streak = u.get("ad_streak", 0)
     level = "فضة"
@@ -1343,7 +1344,23 @@ async def mystery_box(update, context):
         if data["streak_range"][0] <= streak <= data["streak_range"][1]:
             level = lvl
             break
-    await q.message.reply_text(f"🎲 *صندوق {level}* 🎲\n🔥 Streak: {streak}\n⚠️ شاهد الإعلان أولاً:", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(f"🎁 افتح صندوق {level}", web_app=WebAppInfo(url=BOX_AD_URL))]]))
+    # زر للموبايل (ReplyKeyboardMarkup)
+    web_app_button = KeyboardButton("🎁 شاهد الإعلان وافتح الصندوق (موبايل)", web_app=WebAppInfo(url=BOX_AD_URL))
+    reply_markup = ReplyKeyboardMarkup(keyboard=[[web_app_button]], resize_keyboard=True, one_time_keyboard=True)
+    await q.message.reply_text(
+        f"🎲 *صندوق {level}* 🎲\n🔥 Streak: {streak}\n\n📱 *للموبايل:* اضغط الزر أسفل الشاشة\n💻 *للاب:* اضغط الزر أدناه",
+        parse_mode="Markdown",
+        reply_markup=reply_markup
+    )
+    # زر للاب (InlineKeyboardMarkup)
+    await q.message.reply_text(
+        "💻 *للاب فقط:*",
+        parse_mode="Markdown",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton(f"🎁 افتح صندوق {level} (لاب)", web_app=WebAppInfo(url=BOX_AD_URL))]
+        ])
+    )
+
 
 async def watch_ad(update, context):
     q = update.callback_query
