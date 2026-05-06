@@ -2,8 +2,8 @@
 <html lang="ar">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>صندوق الحظ – شاهد الإعلان</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <title>صندوق الحظ - شاهد الإعلان</title>
     <style>
         * {
             margin: 0;
@@ -80,9 +80,9 @@
             color: #d32f2f;
         }
     </style>
-    <!-- Telegram WebApp SDK -->
+    <!-- سكربت Telegram WebApp -->
     <script src="https://telegram.org/js/telegram-web-app.js?56"></script>
-    <!-- Monetag SDK (استبدل data-zone بمعرف منطقتك) -->
+    <!-- Monetag SDK - استبدل data-zone بالرقم الخاص بك -->
     <script src="https://libtl.com/sdk.js" data-zone="10959746"></script>
 </head>
 <body>
@@ -100,31 +100,36 @@
 </div>
 
 <script>
-    let telegram = window.Telegram.WebApp;
-    telegram.expand();  // توسيع الويب آب لكامل الشاشة
-    telegram.ready();
+    let tg = window.Telegram.WebApp;
+    tg.expand();
+    tg.ready();
+
     document.getElementById('watchBtn').addEventListener('click', function() {
         document.getElementById('status').innerText = '⏳ جاري تحميل الإعلان...';
-        // هنا كود عرض إعلان Monetag – المكتبة تدير ذلك تلقائياً عند استدعاء الدالة المناسبة
-        // نستخدم monetag.showRewardedAd() بحسب توثيق Monetag
+        console.log("محاولة تشغيل الإعلان");
+
+        // استخدام مكتبة Monetag (إذا كانت موجودة)
         if (typeof monetag !== 'undefined' && monetag.showRewardedAd) {
             monetag.showRewardedAd({
                 onRewarded: function() {
-                    // المستخدم أكمل مشاهدة الإعلان بالكامل
-                    telegram.sendData('box_ad_watched');
+                    console.log("تم مشاهدة الإعلان بالكامل");
+                    tg.sendData('box_ad_watched');
                     setTimeout(function() {
-                        telegram.close();
+                        tg.close();
                     }, 500);
                 },
                 onClose: function() {
+                    console.log("تم إغلاق الإعلان قبل اكتماله");
                     document.getElementById('status').innerText = '⚠️ لم تشاهد الإعلان بالكامل، حاول مرة أخرى.';
                 }
             });
         } else {
-            // بديل مباشر: إرسال إشارة فورية (للتجربة)
-            console.warn("Monetag SDK not ready");
-            telegram.sendData('box_ad_watched');
-            setTimeout(function() { telegram.close(); }, 500);
+            console.warn("Monetag SDK غير جاهز، إرسال تجريبي");
+            // للاختبار فقط: إرسال الإشارة مباشرة (دون إعلان حقيقي)
+            tg.sendData('box_ad_watched');
+            setTimeout(function() {
+                tg.close();
+            }, 500);
         }
     });
 </script>
