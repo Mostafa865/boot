@@ -984,6 +984,8 @@ async def start(update, context):
     user = update.effective_user
     uid = user.id
     name = user.first_name
+    
+    # معالجة الإحالات
     if context.args and context.args[0].startswith("ref_"):
         ref_id = context.args[0].replace("ref_", "")
         if ref_id != str(uid):
@@ -1005,24 +1007,24 @@ async def start(update, context):
                     add_badge(int(ref_id), "سفير")
                     try: await context.bot.send_message(int(ref_id), "🏅 شارة سفير البوت!", parse_mode="Markdown")
                     except: pass
+    
+    # لوحة الأدمن
     if uid == ADMIN_ID:
         await update.message.reply_text(f"👋 أهلاً *{name}* — لوحة الأدمن 🔧", parse_mode="Markdown", reply_markup=admin_menu())
         return
+    
+    # فحص الحظر
     u = get_user(uid)
     if u.get("banned", False):
         await update.message.reply_text("⛔ أنت محظور من استخدام هذا البوت. تواصل مع الإدارة.")
         return
-
-async def force_subscribe_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # ... نص الرسالة ...
-    keyboard = [
-        [InlineKeyboardButton("🔗 انضمام للقناة", url="https://t.me/easy_free_1")],
-        [InlineKeyboardButton("✅ تأكيد الاشتراك", callback_data="check_subscription")]
-    ]
-    # ... باقي الكود ...
-
-
-  
+    
+    # الاشتراك الإجباري (للمستخدمين العاديين فقط)
+    if not await is_subscribed(uid, context):
+        await force_subscribe_message(update, context)
+        return
+    
+    # هدية التسجيل المبكر
     if u.get("early_bird_rewarded") and not u.get("early_bird_notified") and not u.get("pending_action"):
         update_user(uid, {"pending_action": {"type": "early_bird", "points": EARLY_BIRD_POINTS}})
         web_app_button = KeyboardButton("🎁 استلام الهدية (موبايل)", web_app=WebAppInfo(url=EARLY_AD_URL))
@@ -2131,7 +2133,7 @@ async def is_subscribed(user_id: int, context: ContextTypes.DEFAULT_TYPE) -> boo
 
 
 
-async def force_subscribe_message(update: Update, context: ContextTypes.DEFAULT_TYPE, next_callback=None):
+async def force_subscribe_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """إرسال طلب اشتراك إجباري"""
     text = (
         f"🔒 *عذراً، يجب الاشتراك في قناتنا أولاً*\n\n"
@@ -2144,7 +2146,7 @@ async def force_subscribe_message(update: Update, context: ContextTypes.DEFAULT_
         await update.callback_query.message.reply_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
     else:
         await update.message.reply_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
-
+      
 
 
 async def check_subscription_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
