@@ -1248,8 +1248,7 @@ async def handle_web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE
         else:
             await update.message.reply_text("⚠️ لا يوجد بونص معلق.", parse_mode="Markdown")
 
-  
-   elif data == "box_ad_watched":
+     elif data == "box_ad_watched":
         u = get_user(uid)
         if u.get("banned", False):
             await update.message.reply_text("⛔ أنت محظور.")
@@ -1258,7 +1257,6 @@ async def handle_web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE
         if u.get("last_box_date") == today:
             await update.message.reply_text("❌ لقد فتحت الصندوق اليوم بالفعل!")
             return
-        # حساب الجائزة
         streak = u.get("ad_streak", 0)
         prize, msg, level = spin_mystery_box(streak)
         new_points = u["points"] + prize
@@ -1271,9 +1269,7 @@ async def handle_web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE
             f"🎁 *صندوق {level}* 🎁\n{msg}!\n✨ ربحت *{prize} نقطة عادية*!\n💰 رصيدك العادي الآن: *{new_points}*",
             parse_mode="Markdown"
         )
-        # تسجيل فتح الصندوق في سجل الإجراءات (اختياري)
         await log_action(uid, "فتح صندوق حظ", uid, f"{level} - {prize} نقطة")
-        
 
   
     elif data == "referral_ad_watched":
