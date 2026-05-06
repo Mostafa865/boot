@@ -2138,7 +2138,7 @@ async def force_subscribe_message(update: Update, context: ContextTypes.DEFAULT_
     text = (
         f"🔒 *عذراً، يجب الاشتراك في قناتنا أولاً*\n\n"
         f"لا يمكنك استخدام البوت إلا بعد الانضمام إلى القناة:\n"
-        f"➡️ {FORCE_SUBSCRIBE_CHANNEL}\n\n"
+        f"➡️ {FORCE_SUBSCRIBE_CHANNEL}\n"
         f"📌 اضغط على زر التحقق بعد الاشتراك."
     )
     keyboard = [[InlineKeyboardButton("✅ تحقق من الاشتراك", callback_data="check_subscription")]]
