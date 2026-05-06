@@ -527,15 +527,15 @@ async def account_menu(update, context):
         next_level_text = f"\n🎯 *المستوى التالي:* {next_level_name}\n   • النقاط المتبقية: {points_needed}\n   • إعلانات متبقية لفتح المستوى: {remaining_ads}"
     else:
         next_level_text = "\n🏆 *أنت في أعلى مستوى (أسطورة)!* 🏆"
-    spins_left = max(0, WHEEL_DAILY_LIMIT - u.get("wheel_spins_today", 0))
-    text = (f"👤 *حسابي*\n\n{ambassador}"
+        spins_left = max(0, WHEEL_DAILY_LIMIT - u.get("wheel_spins_today", 0))
+        text = (f"👤 *حسابي*\n\n{ambassador}"
             f"✨ نقاط عادية: *{u['points']}*\n💰 نقاط قابلة للسحب: *{u.get('withdrawable_points',0)}*\n"
             f"✍️ استخدامات: *{u['uses']}*\n🎁 دعوات مباشرة: *{u['referrals']}*\n"
             f"🎁 دعوات غير مباشرة: *{u.get('referral_level2_count',0)}*\n🔥 Streak: *{u.get('ad_streak',0)} يوم* (مضاعف {u.get('ad_multiplier',1.0)}x)\n"
             f"📊 إجمالي الإعلانات: *{u.get('total_ads_watched',0)}*\n🎲 غداً صندوقك: *{next_level}*\n\n{badges_text}\n"
             f"⭐ *مستواك:* {level_name} (مضاعف {level_info['multiplier']}x للإعلانات){next_level_text}\n\n"
-               user_level = u.get("level", "مبتدئ")
-               max_ads_user = LEVELS.get(user_level, {}).get("unlock_ads", 5)
+            user_level = u.get("level", "مبتدئ")
+            max_ads_user = LEVELS.get(user_level, {}).get("unlock_ads", 5)
             f"📺 كل إعلان: +{POINTS_PER_AD} نقطة × المضاعفات (حد {max_ads_user}/يوم حسب مستواك)\n"        
             f"🎡 عجلة الحظ: متبقي اليوم *{spins_left}* من {WHEEL_DAILY_LIMIT} (جوائز تصل إلى 2000 نقطة)\n"
             f"🎁 كل دعوة مباشرة: +{REFERRAL_WITHDRAWABLE} نقطة + {REFERRAL_COMMISSION_PERCENT}% عمولة\n"
