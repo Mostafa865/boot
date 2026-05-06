@@ -1250,11 +1250,11 @@ async def handle_web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE
 
    elif data == "box_ad_watched":
         u = get_user(uid)
-        if u.get("banned", False):
+   if u.get("banned", False):
             await update.message.reply_text("⛔ أنت محظور.")
             return
         today = datetime.utcnow().strftime("%Y-%m-%d")
-        if u.get("last_box_date") == today:
+   if u.get("last_box_date") == today:
             await update.message.reply_text("❌ لقد فتحت الصندوق اليوم بالفعل!")
             return
         streak = u.get("ad_streak", 0)
