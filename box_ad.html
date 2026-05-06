@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>صندوق الحظ - شاهد الإعلان</title>
+    <title>صندوق الحظ – شاهد الإعلان</title>
     <style>
         * {
             margin: 0;
@@ -12,145 +12,121 @@
         }
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            background: linear-gradient(135deg, #1e3c72, #2a5298);
             min-height: 100vh;
             display: flex;
             justify-content: center;
             align-items: center;
             direction: rtl;
-            padding: 20px;
+            padding: 16px;
         }
         .container {
             background: rgba(255,255,255,0.95);
-            border-radius: 30px;
-            padding: 30px 20px;
+            border-radius: 32px;
+            padding: 24px 20px 32px;
             max-width: 400px;
             width: 100%;
             text-align: center;
-            box-shadow: 0 20px 40px rgba(0,0,0,0.3);
-            animation: fadeIn 0.5s ease;
+            box-shadow: 0 20px 35px rgba(0,0,0,0.3);
         }
-        @keyframes fadeIn {
-            from { opacity: 0; transform: scale(0.9); }
-            to { opacity: 1; transform: scale(1); }
+        h2 {
+            color: #1e3c72;
+            font-size: 28px;
+            margin-bottom: 12px;
         }
-        h1 {
-            color: #ffd700;
-            text-shadow: 0 2px 5px rgba(0,0,0,0.3);
-            font-size: 2rem;
-            margin-bottom: 10px;
+        .desc {
+            color: #2c3e66;
+            font-size: 16px;
+            margin-bottom: 24px;
+            line-height: 1.5;
         }
-        .box-icon {
-            font-size: 80px;
-            margin: 20px 0;
-            animation: bounce 1s infinite;
-        }
-        @keyframes bounce {
-            0%, 100% { transform: translateY(0); }
-            50% { transform: translateY(-10px); }
+        .reward-area {
+            background: #f0f4ff;
+            border-radius: 24px;
+            padding: 20px;
+            margin: 16px 0;
         }
         .reward-text {
-            background: #f0f0f0;
-            border-radius: 20px;
-            padding: 15px;
-            margin: 20px 0;
-            color: #333;
-            font-size: 1.1rem;
-        }
-        .reward-text span {
-            color: #ff9800;
+            font-size: 22px;
             font-weight: bold;
-            font-size: 1.5rem;
+            color: #ff8c00;
         }
         button {
-            background: linear-gradient(45deg, #ff9800, #ff5722);
+            background: #ff8c00;
             border: none;
+            border-radius: 60px;
             padding: 16px 20px;
-            border-radius: 50px;
-            color: white;
-            font-size: 1.2rem;
-            font-weight: bold;
             width: 100%;
+            font-size: 20px;
+            font-weight: bold;
+            color: white;
             cursor: pointer;
-            transition: transform 0.2s, box-shadow 0.2s;
-            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
-            margin-top: 10px;
+            transition: transform 0.2s, background 0.2s;
+            margin-top: 16px;
+            box-shadow: 0 8px 0 #b95f00;
         }
         button:active {
-            transform: scale(0.97);
+            transform: translateY(2px);
+            box-shadow: 0 4px 0 #b95f00;
         }
-        .note {
-            margin-top: 20px;
-            font-size: 0.8rem;
-            color: #777;
+        .footnote {
+            font-size: 12px;
+            color: #888;
+            margin-top: 24px;
         }
-        .loader {
-            display: none;
-            margin: 10px auto;
-            width: 30px;
-            height: 30px;
-            border: 3px solid #f3f3f3;
-            border-top: 3px solid #ff9800;
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-        }
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
+        #status {
+            margin-top: 16px;
+            font-size: 14px;
+            color: #d32f2f;
         }
     </style>
+    <!-- Telegram WebApp SDK -->
+    <script src="https://telegram.org/js/telegram-web-app.js?56"></script>
+    <!-- Monetag SDK (استبدل data-zone بمعرف منطقتك) -->
+    <script src="https://libtl.com/sdk.js" data-zone="10959746"></script>
 </head>
 <body>
-    <div class="container">
-        <h1>🎁 صندوق الحظ</h1>
-        <div class="box-icon">🎲</div>
-        <div class="reward-text">
-            🎉 شاهد الإعلان واربح <span>نقاط مضاعفة</span> 🎉
-        </div>
-        <button id="watchAdBtn">👀 مشاهدة الإعلان</button>
-        <div id="loader" class="loader"></div>
-        <div class="note">⚠️ يجب مشاهدة الإعلان بالكامل للحصول على المكافأة</div>
+<div class="container">
+    <h2>🎁 صندوق الحظ</h2>
+    <div class="desc">شاهد الإعلان مرة واحدة لفتح الصندوق والحصول على نقاط إضافية</div>
+    <div class="reward-area">
+        <div>🎲 ستحصل على</div>
+        <div class="reward-text">نقاط عادية × 50~2000</div>
+        <div style="font-size:13px; margin-top:8px;">حسب مستوى صندوقك و streak اليومي</div>
     </div>
+    <button id="watchBtn">📺 مشاهدة الإعلان الآن</button>
+    <div class="footnote">بعد مشاهدة الإعلان سيتم إضافة النقاط تلقائياً</div>
+    <div id="status"></div>
+</div>
 
-    <!-- Monetag SDK -->
-    <script src="https://libtl.com/sdk.js" data-zone="10959746" async></script>
-
-    <script>
-        const tg = window.Telegram.WebApp;
-        tg.ready();
-        tg.expand();  // لتوسيع الويب آب
-
-        const btn = document.getElementById('watchAdBtn');
-        const loader = document.getElementById('loader');
-
-        btn.addEventListener('click', function() {
-            btn.disabled = true;
-            loader.style.display = 'block';
-            btn.style.opacity = '0.7';
-            
-            // محاكاة فتح الإعلان - في الواقع Monetag سيقوم بعرض الإعلان تلقائياً عند وجود عنصر مناسب
-            // هنا نفترض أن الإعلان يظهر ويتم التعامل معه عبر Monetag SDK
-            // بعد مشاهدة الإعلان، يجب أن نرسل الإشارة إلى البوت
-            
-            // التحقق من وجود Monetag وبدء الإعلان
-            if (typeof window.monetag !== 'undefined') {
-                // بعض شبكات الإعلانات تحتاج استدعاء دالة معينة
-                // نستخدم setTimeout لنعطي وقتاً للإعلان
-                setTimeout(() => {
-                    // إرسال الإشارة إلى البوت
-                    tg.sendData('box_ad_watched');
-                    loader.style.display = 'none';
-                    setTimeout(() => tg.close(), 500);
-                }, 15000); // 15 ثانية مدة الإعلان التقريبية (اضبط حسب احتياجك)
-            } else {
-                // في حالة عدم تحميل Monetag، نرسل الإشارة فوراً (للتجربة)
-                setTimeout(() => {
-                    tg.sendData('box_ad_watched');
-                    loader.style.display = 'none';
-                    setTimeout(() => tg.close(), 500);
-                }, 5000);
-            }
-        });
-    </script>
+<script>
+    let telegram = window.Telegram.WebApp;
+    telegram.expand();  // توسيع الويب آب لكامل الشاشة
+    telegram.ready();
+    document.getElementById('watchBtn').addEventListener('click', function() {
+        document.getElementById('status').innerText = '⏳ جاري تحميل الإعلان...';
+        // هنا كود عرض إعلان Monetag – المكتبة تدير ذلك تلقائياً عند استدعاء الدالة المناسبة
+        // نستخدم monetag.showRewardedAd() بحسب توثيق Monetag
+        if (typeof monetag !== 'undefined' && monetag.showRewardedAd) {
+            monetag.showRewardedAd({
+                onRewarded: function() {
+                    // المستخدم أكمل مشاهدة الإعلان بالكامل
+                    telegram.sendData('box_ad_watched');
+                    setTimeout(function() {
+                        telegram.close();
+                    }, 500);
+                },
+                onClose: function() {
+                    document.getElementById('status').innerText = '⚠️ لم تشاهد الإعلان بالكامل، حاول مرة أخرى.';
+                }
+            });
+        } else {
+            // بديل مباشر: إرسال إشارة فورية (للتجربة)
+            console.warn("Monetag SDK not ready");
+            telegram.sendData('box_ad_watched');
+            setTimeout(function() { telegram.close(); }, 500);
+        }
+    });
+</script>
 </body>
 </html>
