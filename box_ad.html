@@ -5,11 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
     <title>صندوق الحظ - شاهد الإعلان</title>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+        /* نفس التنسيقات السابقة */
+        * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             background: linear-gradient(135deg, #1e3c72, #2a5298);
@@ -29,61 +26,20 @@
             text-align: center;
             box-shadow: 0 20px 35px rgba(0,0,0,0.3);
         }
-        h2 {
-            color: #1e3c72;
-            font-size: 28px;
-            margin-bottom: 12px;
-        }
-        .desc {
-            color: #2c3e66;
-            font-size: 16px;
-            margin-bottom: 24px;
-            line-height: 1.5;
-        }
-        .reward-area {
-            background: #f0f4ff;
-            border-radius: 24px;
-            padding: 20px;
-            margin: 16px 0;
-        }
-        .reward-text {
-            font-size: 22px;
-            font-weight: bold;
-            color: #ff8c00;
-        }
+        h2 { color: #1e3c72; font-size: 28px; margin-bottom: 12px; }
+        .desc { color: #2c3e66; font-size: 16px; margin-bottom: 24px; }
+        .reward-area { background: #f0f4ff; border-radius: 24px; padding: 20px; margin: 16px 0; }
+        .reward-text { font-size: 22px; font-weight: bold; color: #ff8c00; }
         button {
-            background: #ff8c00;
-            border: none;
-            border-radius: 60px;
-            padding: 16px 20px;
-            width: 100%;
-            font-size: 20px;
-            font-weight: bold;
-            color: white;
-            cursor: pointer;
-            transition: transform 0.2s, background 0.2s;
-            margin-top: 16px;
-            box-shadow: 0 8px 0 #b95f00;
+            background: #ff8c00; border: none; border-radius: 60px; padding: 16px 20px;
+            width: 100%; font-size: 20px; font-weight: bold; color: white; cursor: pointer;
+            transition: transform 0.2s; margin-top: 16px; box-shadow: 0 8px 0 #b95f00;
         }
-        button:active {
-            transform: translateY(2px);
-            box-shadow: 0 4px 0 #b95f00;
-        }
-        .footnote {
-            font-size: 12px;
-            color: #888;
-            margin-top: 24px;
-        }
-        #status {
-            margin-top: 16px;
-            font-size: 14px;
-            color: #d32f2f;
-        }
+        button:active { transform: translateY(2px); box-shadow: 0 4px 0 #b95f00; }
+        .footnote { font-size: 12px; color: #888; margin-top: 24px; }
+        #status { margin-top: 16px; font-size: 14px; color: #d32f2f; }
     </style>
-    <!-- سكربت Telegram WebApp -->
     <script src="https://telegram.org/js/telegram-web-app.js?56"></script>
-    <!-- Monetag SDK - استبدل data-zone بالرقم الخاص بك -->
-    <script src="https://libtl.com/sdk.js" data-zone="10959746"></script>
 </head>
 <body>
 <div class="container">
@@ -104,32 +60,51 @@
     tg.expand();
     tg.ready();
 
-    document.getElementById('watchBtn').addEventListener('click', function() {
-        document.getElementById('status').innerText = '⏳ جاري تحميل الإعلان...';
-        console.log("محاولة تشغيل الإعلان");
+    // تحميل مكتبة Monetag ديناميكياً لضمان وجودها
+    function loadMonetagScript() {
+        return new Promise((resolve, reject) => {
+            if (window.monetag) {
+                resolve(window.monetag);
+                return;
+            }
+            const script = document.createElement('script');
+            script.src = "https://libtl.com/sdk.js";
+            script.setAttribute('data-zone', '10959746'); // ضع رقم منطقتك هنا
+            script.onload = () => resolve(window.monetag);
+            script.onerror = () => reject(new Error("فشل تحميل SDK"));
+            document.head.appendChild(script);
+        });
+    }
 
-        // استخدام مكتبة Monetag (إذا كانت موجودة)
-        if (typeof monetag !== 'undefined' && monetag.showRewardedAd) {
-            monetag.showRewardedAd({
-                onRewarded: function() {
-                    console.log("تم مشاهدة الإعلان بالكامل");
-                    tg.sendData('box_ad_watched');
-                    setTimeout(function() {
-                        tg.close();
-                    }, 500);
-                },
-                onClose: function() {
-                    console.log("تم إغلاق الإعلان قبل اكتماله");
-                    document.getElementById('status').innerText = '⚠️ لم تشاهد الإعلان بالكامل، حاول مرة أخرى.';
-                }
-            });
-        } else {
-            console.warn("Monetag SDK غير جاهز، إرسال تجريبي");
-            // للاختبار فقط: إرسال الإشارة مباشرة (دون إعلان حقيقي)
-            tg.sendData('box_ad_watched');
-            setTimeout(function() {
-                tg.close();
-            }, 500);
+    document.getElementById('watchBtn').addEventListener('click', async function() {
+        const statusDiv = document.getElementById('status');
+        statusDiv.innerText = '⏳ جاري تحميل الإعلان...';
+        try {
+            const monetag = await loadMonetagScript();
+            if (monetag && typeof monetag.showRewardedAd === 'function') {
+                monetag.showRewardedAd({
+                    onRewarded: function() {
+                        statusDiv.innerText = '✅ شكراً لمشاهدة الإعلان! جاري إضافة النقاط...';
+                        tg.sendData('box_ad_watched');
+                        setTimeout(() => tg.close(), 500);
+                    },
+                    onClose: function() {
+                        statusDiv.innerText = '⚠️ لم تشاهد الإعلان بالكامل، حاول مرة أخرى.';
+                    },
+                    onError: function(err) {
+                        console.error(err);
+                        statusDiv.innerText = '❌ حدث خطأ في الإعلان، حاول لاحقاً.';
+                    }
+                });
+            } else {
+                // Fallback لو الدالة غير موجودة: أرسل الإشارة فوراً للاختبار (لن يظهر إعلان حقيقي)
+                statusDiv.innerText = '⚠️ وضع تجريبي: تم إرسال الإشارة بدون إعلان.';
+                tg.sendData('box_ad_watched');
+                setTimeout(() => tg.close(), 500);
+            }
+        } catch (error) {
+            console.error(error);
+            statusDiv.innerText = '❌ فشل تحميل الإعلان، يرجى المحاولة لاحقاً.';
         }
     });
 </script>
