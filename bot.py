@@ -506,6 +506,7 @@ async def account_menu(update, context):
     if u.get("banned", False):
         await q.answer("⛔ أنت محظور", show_alert=True)
         return
+    
     ambassador = "🏅 *سفير البوت* 🏅\n" if u.get("ambassador_badge") else ""
     badges_text = "🏅 *الشارات:* " + ", ".join(u.get("badges", [])) if u.get("badges") else "🏅 *الشارات:* لا توجد"
     next_streak = u.get("ad_streak",0)+1
@@ -526,25 +527,38 @@ async def account_menu(update, context):
         points_needed = max(0, next_lvl["points"] - highest)
         next_level_text = f"\n🎯 *المستوى التالي:* {next_level_name}\n   • النقاط المتبقية: {points_needed}\n   • إعلانات متبقية لفتح المستوى: {remaining_ads}"
     else:
-        user_level = u.get("level", "مبتدئ")
-        max_ads_user = LEVELS.get(user_level, {}).get("unlock_ads", 5)
         next_level_text = "\n🏆 *أنت في أعلى مستوى (أسطورة)!* 🏆"
-        spins_left = max(0, WHEEL_DAILY_LIMIT - u.get("wheel_spins_today", 0))
-        text = (f"👤 *حسابي*\n\n{ambassador}"
-            f"✨ نقاط عادية: *{u['points']}*\n💰 نقاط قابلة للسحب: *{u.get('withdrawable_points',0)}*\n"
-            f"✍️ استخدامات: *{u['uses']}*\n🎁 دعوات مباشرة: *{u['referrals']}*\n"
-            f"🎁 دعوات غير مباشرة: *{u.get('referral_level2_count',0)}*\n🔥 Streak: *{u.get('ad_streak',0)} يوم* (مضاعف {u.get('ad_multiplier',1.0)}x)\n"
-            f"📊 إجمالي الإعلانات: *{u.get('total_ads_watched',0)}*\n🎲 غداً صندوقك: *{next_level}*\n\n{badges_text}\n"
+    
+    spins_left = max(0, WHEEL_DAILY_LIMIT - u.get("wheel_spins_today", 0))
+    
+    # حساب الحد اليومي حسب مستوى المستخدم (للعرض فقط)
+    user_level = u.get("level", "مبتدئ")
+    max_ads_user = LEVELS.get(user_level, {}).get("unlock_ads", 8)  # 8 افتراضي للمبتدئ بدلاً من 0
+    
+    # بناء النص خارج أي شرط
+    text = (f"👤 *حسابي*\n\n{ambassador}"
+            f"✨ نقاط عادية: *{u['points']}*\n"
+            f"💰 نقاط قابلة للسحب: *{u.get('withdrawable_points',0)}*\n"
+            f"✍️ استخدامات: *{u['uses']}*\n"
+            f"🎁 دعوات مباشرة: *{u['referrals']}*\n"
+            f"🎁 دعوات غير مباشرة: *{u.get('referral_level2_count',0)}*\n"
+            f"🔥 Streak: *{u.get('ad_streak',0)} يوم* (مضاعف {u.get('ad_multiplier',1.0)}x)\n"
+            f"📊 إجمالي الإعلانات: *{u.get('total_ads_watched',0)}*\n"
+            f"🎲 غداً صندوقك: *{next_level}*\n\n"
+            f"{badges_text}\n"
             f"⭐ *مستواك:* {level_name} (مضاعف {level_info['multiplier']}x للإعلانات){next_level_text}\n\n"
-            f"📺 كل إعلان: +{POINTS_PER_AD} نقطة × المضاعفات (حد {max_ads_user}/يوم حسب مستواك)\n"        
+            f"📺 كل إعلان: +{POINTS_PER_AD} نقطة × المضاعفات (حد {max_ads_user}/يوم حسب مستواك)\n"
             f"🎡 عجلة الحظ: متبقي اليوم *{spins_left}* من {WHEEL_DAILY_LIMIT} (جوائز تصل إلى 2000 نقطة)\n"
             f"🎁 كل دعوة مباشرة: +{REFERRAL_WITHDRAWABLE} نقطة + {REFERRAL_COMMISSION_PERCENT}% عمولة\n"
             f"🎁 كل دعوة غير مباشرة: +{REFERRAL_LEVEL2} نقطة\n"
-            f"💰 التحويل: {POINTS_PER_DOLLAR} نقطة = $1\n🏧 حد السحب: {MIN_WITHDRAW_POINTS} نقطة (${MIN_WITHDRAW_POINTS//POINTS_PER_DOLLAR})\n\n"
+            f"💰 التحويل: {POINTS_PER_DOLLAR} نقطة = $1\n"
+            f"🏧 حد السحب: {MIN_WITHDRAW_POINTS} نقطة (${MIN_WITHDRAW_POINTS//POINTS_PER_DOLLAR})\n\n"
             f"🔄 تحويل النقاط العادية إلى قابلة للسحب:\n  • نسبة التحويل: {CONVERSION_RATE}% (100 نقطة عادية → {CONVERSION_RATE} نقطة قابلة للسحب)\n  • الحد اليومي: {MAX_DAILY_CONVERSION} نقطة عادية")
+    
     kb = [[InlineKeyboardButton("🔄 تحويل نقاطي", callback_data="convert_points"), InlineKeyboardButton("💰 سحب النقاط", callback_data="withdraw")],
           [InlineKeyboardButton("🔙 رجوع", callback_data="main_back")]]
     await q.edit_message_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(kb))
+
 
 async def help_callback(update, context):
     q = update.callback_query
