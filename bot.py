@@ -1248,7 +1248,7 @@ async def handle_web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE
         else:
             await update.message.reply_text("⚠️ لا يوجد بونص معلق.", parse_mode="Markdown")
 
-     elif data == "box_ad_watched":
+   elif data == "box_ad_watched":
         u = get_user(uid)
         if u.get("banned", False):
             await update.message.reply_text("⛔ أنت محظور.")
