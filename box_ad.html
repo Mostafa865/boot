@@ -1,36 +1,156 @@
-async def mystery_box(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    q = update.callback_query
-    await q.answer()
-    u = get_user(q.from_user.id)
-    if u.get("last_box_date") == datetime.utcnow().strftime("%Y-%m-%d"):
-        await q.message.reply_text("❌ فتحت الصندوق اليوم!", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏠 القائمة", callback_data="main_back")]]))
-        return
-    streak = u.get("ad_streak", 0)
-    level = "فضة"
-    for lvl, data in BOX_LEVELS.items():
-        if data["streak_range"][0] <= streak <= data["streak_range"][1]:
-            level = lvl
-            break
+<!DOCTYPE html>
+<html lang="ar">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>صندوق الحظ - شاهد الإعلان</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            direction: rtl;
+            padding: 20px;
+        }
+        .container {
+            background: rgba(255,255,255,0.95);
+            border-radius: 30px;
+            padding: 30px 20px;
+            max-width: 400px;
+            width: 100%;
+            text-align: center;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.3);
+            animation: fadeIn 0.5s ease;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: scale(0.9); }
+            to { opacity: 1; transform: scale(1); }
+        }
+        h1 {
+            color: #ffd700;
+            text-shadow: 0 2px 5px rgba(0,0,0,0.3);
+            font-size: 2rem;
+            margin-bottom: 10px;
+        }
+        .box-icon {
+            font-size: 80px;
+            margin: 20px 0;
+            animation: bounce 1s infinite;
+        }
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+        .reward-text {
+            background: #f0f0f0;
+            border-radius: 20px;
+            padding: 15px;
+            margin: 20px 0;
+            color: #333;
+            font-size: 1.1rem;
+        }
+        .reward-text span {
+            color: #ff9800;
+            font-weight: bold;
+            font-size: 1.5rem;
+        }
+        button {
+            background: linear-gradient(45deg, #ff9800, #ff5722);
+            border: none;
+            padding: 16px 20px;
+            border-radius: 50px;
+            color: white;
+            font-size: 1.2rem;
+            font-weight: bold;
+            width: 100%;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+            margin-top: 10px;
+        }
+        button:active {
+            transform: scale(0.97);
+        }
+        .note {
+            margin-top: 20px;
+            font-size: 0.8rem;
+            color: #777;
+        }
+        .loader {
+            display: none;
+            margin: 10px auto;
+            width: 30px;
+            height: 30px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #ff9800;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎁 صندوق الحظ</h1>
+        <div class="box-icon">🎲</div>
+        <div class="reward-text">
+            🎉 شاهد الإعلان واربح <span>نقاط مضاعفة</span> 🎉
+        </div>
+        <button id="watchAdBtn">👀 مشاهدة الإعلان</button>
+        <div id="loader" class="loader"></div>
+        <div class="note">⚠️ يجب مشاهدة الإعلان بالكامل للحصول على المكافأة</div>
+    </div>
 
-    # زر للموبايل (ReplyKeyboardMarkup)
-    web_app_button = KeyboardButton("🎁 شاهد الإعلان وافتح الصندوق (موبايل)", web_app=WebAppInfo(url=BOX_AD_URL))
-    reply_markup = ReplyKeyboardMarkup(
-        keyboard=[[web_app_button]],
-        resize_keyboard=True,
-        one_time_keyboard=True
-    )
+    <!-- Monetag SDK -->
+    <script src="https://libtl.com/sdk.js" data-zone="10959746" async></script>
 
-    await q.message.reply_text(
-        f"🎲 *صندوق {level}* 🎲\n🔥 Streak: {streak}\n\n📱 *موبايل:* اضغط الزر أسفل الشاشة\n💻 *لاب:* اضغط الزر أدناه 👇",
-        parse_mode="Markdown",
-        reply_markup=reply_markup
-    )
+    <script>
+        const tg = window.Telegram.WebApp;
+        tg.ready();
+        tg.expand();  // لتوسيع الويب آب
 
-    # زر للاب (InlineKeyboardMarkup)
-    await q.message.reply_text(
-        "💻 *للاب فقط:*",
-        parse_mode="Markdown",
-        reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton(f"🎁 افتح صندوق {level} (لاب)", web_app=WebAppInfo(url=BOX_AD_URL))]
-        ])
-    )
+        const btn = document.getElementById('watchAdBtn');
+        const loader = document.getElementById('loader');
+
+        btn.addEventListener('click', function() {
+            btn.disabled = true;
+            loader.style.display = 'block';
+            btn.style.opacity = '0.7';
+            
+            // محاكاة فتح الإعلان - في الواقع Monetag سيقوم بعرض الإعلان تلقائياً عند وجود عنصر مناسب
+            // هنا نفترض أن الإعلان يظهر ويتم التعامل معه عبر Monetag SDK
+            // بعد مشاهدة الإعلان، يجب أن نرسل الإشارة إلى البوت
+            
+            // التحقق من وجود Monetag وبدء الإعلان
+            if (typeof window.monetag !== 'undefined') {
+                // بعض شبكات الإعلانات تحتاج استدعاء دالة معينة
+                // نستخدم setTimeout لنعطي وقتاً للإعلان
+                setTimeout(() => {
+                    // إرسال الإشارة إلى البوت
+                    tg.sendData('box_ad_watched');
+                    loader.style.display = 'none';
+                    setTimeout(() => tg.close(), 500);
+                }, 15000); // 15 ثانية مدة الإعلان التقريبية (اضبط حسب احتياجك)
+            } else {
+                // في حالة عدم تحميل Monetag، نرسل الإشارة فوراً (للتجربة)
+                setTimeout(() => {
+                    tg.sendData('box_ad_watched');
+                    loader.style.display = 'none';
+                    setTimeout(() => tg.close(), 500);
+                }, 5000);
+            }
+        });
+    </script>
+</body>
+</html>
