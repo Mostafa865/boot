@@ -534,7 +534,9 @@ async def account_menu(update, context):
             f"🎁 دعوات غير مباشرة: *{u.get('referral_level2_count',0)}*\n🔥 Streak: *{u.get('ad_streak',0)} يوم* (مضاعف {u.get('ad_multiplier',1.0)}x)\n"
             f"📊 إجمالي الإعلانات: *{u.get('total_ads_watched',0)}*\n🎲 غداً صندوقك: *{next_level}*\n\n{badges_text}\n"
             f"⭐ *مستواك:* {level_name} (مضاعف {level_info['multiplier']}x للإعلانات){next_level_text}\n\n"
-            f"📺 كل إعلان: +{POINTS_PER_AD} نقطة × المضاعفات (حد {MAX_ADS_PER_DAY}/يوم)\n"
+            user_level = u.get("level", "مبتدئ")
+            max_ads_user = LEVELS.get(user_level, {}).get("unlock_ads", 5)
+            f"📺 كل إعلان: +{POINTS_PER_AD} نقطة × المضاعفات (حد {max_ads_user}/يوم حسب مستواك)\n"        
             f"🎡 عجلة الحظ: متبقي اليوم *{spins_left}* من {WHEEL_DAILY_LIMIT} (جوائز تصل إلى 2000 نقطة)\n"
             f"🎁 كل دعوة مباشرة: +{REFERRAL_WITHDRAWABLE} نقطة + {REFERRAL_COMMISSION_PERCENT}% عمولة\n"
             f"🎁 كل دعوة غير مباشرة: +{REFERRAL_LEVEL2} نقطة\n"
@@ -1150,9 +1152,13 @@ async def handle_web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE
         if u.get("last_ad_date") != today:
             update_user(uid, {"ad_watch_today": 0, "last_ad_date": today})
             u["ad_watch_today"] = 0
-        if u.get("ad_watch_today", 0) >= MAX_ADS_PER_DAY:
-            await update.message.reply_text(f"❌ الحد اليومي {MAX_ADS_PER_DAY}", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏠 القائمة", callback_data="main_back")]]))
+               # جلب الحد اليومي حسب مستوى المستخدم
+        user_level = u.get("level", "مبتدئ")
+        max_ads_user = LEVELS.get(user_level, {}).get("unlock_ads", 5)
+        if u.get("ad_watch_today", 0) >= max_ads_user:
+            await update.message.reply_text(f"❌ لقد استنفذت حدك اليومي ({max_ads_user} إعلان). مستواك: {user_level}", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏠 القائمة", callback_data="main_back")]]))
             return
+          
         flash = get_active_flash_offer()
         mul = update_ad_streak(uid, today)
         multiplier = flash["multiplier"] if flash else 1
@@ -1203,7 +1209,7 @@ async def handle_web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE
         if upgrade_result:
             upgrade_msg = f"\n\n🎉 *تهانينا! لقد تم ترقيتك إلى مستوى {upgrade_result['new_level']}!* 🎉\n✅ مكافأة +{upgrade_result['reward']} نقطة قابلة للسحب."
         await update.message.reply_text(
-            f"✅ *+{earned} نقطة!*\n💎 رصيدك: *{new_w}*\n🔥 مضاعف: {mul}x\n📊 اليوم: {new_cnt}/{MAX_ADS_PER_DAY}{upgrade_msg}",
+            f"✅ *+{earned} نقطة!*\n💎 رصيدك: *{new_w}*\n🔥 مضاعف: {mul}x\n📊 اليوم: {new_cnt}/{max_ads_user}{upgrade_msg}",
             parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏠 القائمة", callback_data="main_back")]])
         )
         pending = u.get("pending_action")
@@ -1401,13 +1407,17 @@ async def watch_ad(update, context):
     if u.get("last_ad_date") != today:
         update_user(uid, {"ad_watch_today": 0, "last_ad_date": today})
         u["ad_watch_today"] = 0
-    if u.get("ad_watch_today", 0) >= MAX_ADS_PER_DAY:
-        await q.message.reply_text(f"❌ الحد اليومي {MAX_ADS_PER_DAY}", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏠 القائمة", callback_data="main_back")]]))
-        return
+  # جلب الحد حسب مستوى المستخدم
+user_level = u.get("level", "مبتدئ")
+max_ads_user = LEVELS.get(user_level, {}).get("unlock_ads", 5)
+if u.get("ad_watch_today", 0) >= max_ads_user:
+    await q.message.reply_text(f"❌ لقد استنفذت حدك اليومي ({max_ads_user} إعلان). مستواك: {user_level}", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏠 القائمة", callback_data="main_back")]]))
+    return
+  
     level_multiplier = LEVELS.get(u.get("level", "مبتدئ"), LEVELS["مبتدئ"])["multiplier"]
     mul = update_ad_streak(uid, today)
     earn = int(POINTS_PER_AD * mul * level_multiplier)
-    remaining = MAX_ADS_PER_DAY - u["ad_watch_today"]
+    remaining = max_ads_user - u["ad_watch_today"]
     web_app_button = KeyboardButton("📺 شاهد الإعلان الآن (موبايل)", web_app=WebAppInfo(url=AD_URL))
     reply_markup = ReplyKeyboardMarkup(keyboard=[[web_app_button]], resize_keyboard=True, one_time_keyboard=True)
     await q.message.reply_text(f"📺 *شاهد الإعلان*\n🔥 مضاعف: {mul}x\n⭐ مستوى: {level_multiplier}x\n💰 ستربح: {earn} نقطة\n📊 تبقى: {remaining} إعلان.\n\n📱 *موبايل:* اضغط الزر أسفل الشاشة\n💻 *لاب:* اضغط الزر أدناه 👇", parse_mode="Markdown", reply_markup=reply_markup)
