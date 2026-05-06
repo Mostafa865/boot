@@ -1249,12 +1249,12 @@ async def handle_web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE
             await update.message.reply_text("⚠️ لا يوجد بونص معلق.", parse_mode="Markdown")
 
    elif data == "box_ad_watched":
-        u = get_user(uid)
-   if u.get("banned", False):
+       u = get_user(uid)
+       if u.get("banned", False):
             await update.message.reply_text("⛔ أنت محظور.")
             return
-        today = datetime.utcnow().strftime("%Y-%m-%d")
-   if u.get("last_box_date") == today:
+       today = datetime.utcnow().strftime("%Y-%m-%d")
+       if u.get("last_box_date") == today:
             await update.message.reply_text("❌ لقد فتحت الصندوق اليوم بالفعل!")
             return
         streak = u.get("ad_streak", 0)
@@ -1265,11 +1265,11 @@ async def handle_web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE
             "last_box_date": today,
             "pending_action": None
         })
-        await update.message.reply_text(
+            await update.message.reply_text(
             f"🎁 *صندوق {level}* 🎁\n{msg}!\n✨ ربحت *{prize} نقطة عادية*!\n💰 رصيدك العادي الآن: *{new_points}*",
             parse_mode="Markdown"
         )
-        await log_action(uid, "فتح صندوق حظ", uid, f"{level} - {prize} نقطة")
+            await log_action(uid, "فتح صندوق حظ", uid, f"{level} - {prize} نقطة")
 
   
     elif data == "referral_ad_watched":
