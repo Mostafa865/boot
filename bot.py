@@ -356,8 +356,13 @@ async def wheel_of_fortune(update: Update, context: ContextTypes.DEFAULT_TYPE):
         update_user(uid, {"wheel_spins_today": 0, "last_wheel_date": today})
         user_data["wheel_spins_today"] = 0
     spins_today = user_data.get("wheel_spins_today", 0)
-    if spins_today >= WHEEL_DAILY_LIMIT:
-        await query.message.reply_text(f"⚠️ لقد استخدمت عجلة الحظ اليوم {WHEEL_DAILY_LIMIT} مرات بالفعل! عاود غداً.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 رجوع", callback_data="earn_menu")]]))
+       if spins_today >= WHEEL_DAILY_LIMIT:
+        hours, minutes = get_reset_time_remaining()
+        await query.message.reply_text(
+            f"⚠️ لقد استخدمت عجلة الحظ اليوم {WHEEL_DAILY_LIMIT} مرات!\n"
+            f"⏳ ستعود المحاولات بعد {hours} ساعة و {minutes} دقيقة.",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 رجوع", callback_data="earn_menu")]])
+        )
         return
     update_user(uid, {"pending_action": {"type": "wheel"}})
     web_app_button = KeyboardButton("🎡 شاهد الإعلان واستدير (موبايل)", web_app=WebAppInfo(url=WHEEL_URL))
@@ -1397,16 +1402,23 @@ async def handle_web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE
         else:
             await update.message.reply_text("⚠️ لا يوجد طلب عجلة حظ معلق.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏠 القائمة", callback_data="main_back")]]))
           
-async def mystery_box(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def mystery_box(update, context):
     q = update.callback_query
     await q.answer()
     u = get_user(q.from_user.id)
     if u.get("banned", False):
         await q.answer("⛔ أنت محظور", show_alert=True)
         return
-    if u.get("last_box_date") == datetime.utcnow().strftime("%Y-%m-%d"):
-        await q.message.reply_text("❌ لقد فتحت الصندوق اليوم! عاود غداً.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 رجوع", callback_data="main_back")]]))
+    today = datetime.utcnow().strftime("%Y-%m-%d")
+    if u.get("last_box_date") == today:
+        hours, minutes = get_reset_time_remaining()
+        await q.message.reply_text(
+            f"❌ لقد فتحت صندوق الحظ اليوم بالفعل!\n"
+            f"⏳ يمكنك فتحه مرة أخرى بعد {hours} ساعة و {minutes} دقيقة.",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 رجوع", callback_data="main_back")]])
+        )
         return
+    # ... باقي الكود ...
     streak = u.get("ad_streak", 0)
     level = "فضة"
     for lvl, data in BOX_LEVELS.items():
@@ -1450,11 +1462,12 @@ async def watch_ad(update, context):
     max_ads_user = LEVELS.get(user_level, {}).get("unlock_ads", 8)
     
     # التحقق من الحد اليومي
-    if u.get("ad_watch_today", 0) >= max_ads_user:
+       if u.get("ad_watch_today", 0) >= max_ads_user:
         hours, minutes = get_reset_time_remaining()
         await q.message.reply_text(
             f"❌ لقد استنفذت حدك اليومي ({max_ads_user} إعلان).\n"
-            f"⏳ سيتجدد حدك بعد {hours} ساعة و {minutes} دقيقة.",
+            f"⏳ سيتجدد حدك بعد {hours} ساعة و {minutes} دقيقة.\n"
+            f"📊 إجمالي إعلانات اليوم: {u.get('ad_watch_today', 0)}/{max_ads_user}",
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏠 القائمة", callback_data="main_back")]])
         )
         return
@@ -1481,26 +1494,41 @@ async def watch_ad(update, context):
     )
 
 
-async def daily_tasks(update, context):
-    q = update.callback_query
-    await q.answer()
-    u = check_daily_tasks(get_user(q.from_user.id))
-    if u.get("banned", False):
-        await q.answer("⛔ أنت محظور", show_alert=True)
+async def wheel_of_fortune(update, context):
+    query = update.callback_query
+    await query.answer()
+    uid = query.from_user.id
+    user_data = get_user(uid)
+    if user_data.get("banned", False):
+        await query.answer("⛔ أنت محظور", show_alert=True)
         return
-    tasks = u["tasks"]
-    text = f"📋 *مهام اليوم*\n{'✅' if tasks['ad'] else '❌'} شاهد إعلان\n{'✅' if tasks['used'] else '❌'} استخدم البوت"
-    if tasks["ad"] and tasks["used"] and not tasks["bonus"]:
-        text += "\n\n🎁 *300 نقطة بونص* (يتطلب إعلاناً)"
-        kb = [[InlineKeyboardButton("🎁 استلام البونص", callback_data="claim_bonus")]]
-    elif tasks["bonus"]:
-        text += "\n✅ استلمت البونص!"
-        kb = [[InlineKeyboardButton("🏠 القائمة", callback_data="main_back")]]
-    else:
-        text += "\n🎯 أكمل المهام لتحصل على 300 نقطة!"
-        kb = [[InlineKeyboardButton("🏠 القائمة", callback_data="main_back")]]
-    await q.message.reply_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(kb))
-
+    today = datetime.utcnow().strftime("%Y-%m-%d")
+    if user_data.get("last_wheel_date") != today:
+        update_user(uid, {"wheel_spins_today": 0, "last_wheel_date": today})
+        user_data["wheel_spins_today"] = 0
+    spins_today = user_data.get("wheel_spins_today", 0)
+    if spins_today >= WHEEL_DAILY_LIMIT:
+        hours, minutes = get_reset_time_remaining()
+        await query.message.reply_text(
+            f"⚠️ لقد استخدمت عجلة الحظ اليوم {WHEEL_DAILY_LIMIT} مرات بالفعل!\n🔄 يتجدد بعد {hours} ساعة و {minutes} دقيقة.",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 رجوع", callback_data="earn_menu")]])
+        )
+        return
+    update_user(uid, {"pending_action": {"type": "wheel"}})
+    web_app_button = KeyboardButton("🎡 شاهد الإعلان واستدير (موبايل)", web_app=WebAppInfo(url=WHEEL_URL))
+    reply_markup = ReplyKeyboardMarkup(keyboard=[[web_app_button]], resize_keyboard=True, one_time_keyboard=True)
+    await query.message.reply_text(
+        f"🎡 *عجلة الحظ* (المتبقي اليوم: {WHEEL_DAILY_LIMIT - spins_today})\n\n📱 *موبايل:* اضغط الزر أسفل الشاشة\n💻 *لاب:* اضغط الزر أدناه 👇",
+        parse_mode="Markdown",
+        reply_markup=reply_markup
+    )
+    await query.message.reply_text(
+        "💻 *للاب فقط:*",
+        parse_mode="Markdown",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("🎡 شاهد الإعلان واستدير (لاب)", web_app=WebAppInfo(url=WHEEL_URL))]
+        ])
+    )
 async def claim_bonus(update, context):
     q = update.callback_query
     await q.answer()
@@ -1553,7 +1581,7 @@ async def withdraw_request(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 def get_reset_time_remaining():
-    """حساب الوقت المتبقي حتى منتصف الليلة القادمة (UTC)"""
+    """حساب الوقت المتبقي حتى منتصف الليل (تجديد الحد اليومي)"""
     now = datetime.utcnow()
     midnight = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
     remaining = midnight - now
