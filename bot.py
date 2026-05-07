@@ -2290,6 +2290,7 @@ def main():
     app.add_handler(CommandHandler("offer", admin_flash_offer))
     app.add_handler(CommandHandler("stopoffer", admin_stop_offer))
     app.add_handler(CommandHandler("createcoupon", create_coupon))
+    app.add_handler(CommandHandler("timer", timer_command))
     app.add_handler(CommandHandler("addpoints", admin_add_points))
     app.add_handler(CommandHandler("removepoints", admin_remove_points))
     app.add_handler(CommandHandler("ban", admin_ban))
@@ -2300,7 +2301,6 @@ def main():
     app.add_handler(CommandHandler("end_challenge", end_global_challenge))
     app.add_handler(CommandHandler("cheatlogs", cheat_logs))
     app.add_handler(CommandHandler("setwallet", set_wallet))
-    app.add_handler(CommandHandler("timer", timer_command))
 
     callbacks = [
         ("^content_menu$", content_menu), ("^earn_menu$", earn_menu), ("^account_menu$", account_menu),
