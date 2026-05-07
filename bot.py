@@ -2292,6 +2292,7 @@ def main():
         app.add_handler(CallbackQueryHandler(admin_list_banned, pattern="^admin_list_banned_btn$"))
         app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, custom_amount_handler))
         app.add_handler(CallbackQueryHandler(check_subscription_callback, pattern="^check_subscription$"))
+        app.add_handler(CallbackQueryHandler(admin_churn_analysis, pattern="^admin_churn$"))
     loop = asyncio.get_event_loop()
     loop.create_task(scheduled_tasks(app))
     print("✅ Bot started successfully!")
