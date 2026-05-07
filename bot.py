@@ -551,7 +551,7 @@ async def account_menu(update, context):
     user_level = u.get("level", "مبتدئ")
     max_ads_user = LEVELS.get(user_level, {}).get("unlock_ads", 8)  # 8 افتراضي للمبتدئ بدلاً من 0
 
- hours, minutes = get_reset_time_remaining()
+    hours, minutes = get_reset_time_remaining()
     time_left_text = f"⏳ *يتجدد حدك اليومي بعد:* {hours} ساعة و {minutes} دقيقة"
   
     # بناء النص خارج أي شرط
