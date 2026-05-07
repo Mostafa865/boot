@@ -2268,6 +2268,9 @@ async def check_subscription_callback(update: Update, context: ContextTypes.DEFA
 
 
 
+async def timer_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("⏳ مرحباً! هذه تجربة لأمر المؤقت. يمكنك استخدامه لتذكير نفسك بمشاهدة الإعلانات.")
+
 
 
 # ========== تشغيل البوت ==========
