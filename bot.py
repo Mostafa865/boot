@@ -2226,7 +2226,7 @@ async def force_subscribe_message(update: Update, context: ContextTypes.DEFAULT_
         f"📌 اضغط الزر أدناه للانضمام، ثم اضغط 'تحقق'."
     )
     keyboard = [
-        [InlineKeyboardButton("🔗 انضمام للقناة", url="https://t.me/easy_free_1")],
+        [InlineKeyboardButton("🔗 انضمام للقناة", url="https://t.me/bots_free1")],
         [InlineKeyboardButton("✅ تحقق من الاشتراك", callback_data="check_subscription")]
     ]
     if update.callback_query:
