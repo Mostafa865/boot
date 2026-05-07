@@ -550,7 +550,10 @@ async def account_menu(update, context):
     # حساب الحد اليومي حسب مستوى المستخدم (للعرض فقط)
     user_level = u.get("level", "مبتدئ")
     max_ads_user = LEVELS.get(user_level, {}).get("unlock_ads", 8)  # 8 افتراضي للمبتدئ بدلاً من 0
-    
+
+ hours, minutes = get_reset_time_remaining()
+    time_left_text = f"⏳ *يتجدد حدك اليومي بعد:* {hours} ساعة و {minutes} دقيقة"
+  
     # بناء النص خارج أي شرط
     text = (f"👤 *حسابي*\n\n{ambassador}"
             f"✨ نقاط عادية: *{u['points']}*\n"
@@ -572,8 +575,7 @@ async def account_menu(update, context):
             f"🔄 تحويل النقاط العادية إلى قابلة للسحب:\n  • نسبة التحويل: {CONVERSION_RATE}% (100 نقطة عادية → {CONVERSION_RATE} نقطة قابلة للسحب)\n  • الحد اليومي: {MAX_DAILY_CONVERSION} نقطة عادية")
 
 
-      hours, minutes = get_reset_time_remaining()
-    time_left_text = f"⏳ *يتجدد حدك اليومي بعد:* {hours} ساعة و {minutes} دقيقة"
+     
     
     kb = [[InlineKeyboardButton("🔄 تحويل نقاطي", callback_data="convert_points"), InlineKeyboardButton("💰 سحب النقاط", callback_data="withdraw")],
           [InlineKeyboardButton("🔙 رجوع", callback_data="main_back")]]
