@@ -269,16 +269,29 @@ async def get_inactive_users(days=7):
 async def admin_churn_analysis(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
+    
+    # تحقق من صلاحية الأدمن
     if q.from_user.id != ADMIN_ID:
         await q.answer("⛔ غير مصرح.", show_alert=True)
         return
-    inactive = await get_inactive_users(7)
-    if not inactive:
+    
+    # جلب المستخدمين غير النشطين خلال 7 أيام
+    cutoff = (datetime.utcnow() - timedelta(days=7)).strftime("%Y-%m-%d")
+    inactive_users = list(users_col.find({
+        "$or": [
+            {"last_ad_date": {"$lt": cutoff}},
+            {"last_ad_date": {"$exists": False}}
+        ],
+        "banned": False
+    }).limit(20))
+    
+    if not inactive_users:
         await q.message.reply_text("✅ لا يوجد مستخدمون غير نشطين خلال الأسبوع الماضي.")
         return
+    
     text = "📉 *تحليل التسرب (غير نشطين لأكثر من 7 أيام)*\n\n"
     kb = []
-    for user in inactive[:10]:
+    for user in inactive_users[:10]:
         uid = user["_id"]
         try:
             name = (await context.bot.get_chat(int(uid))).first_name
@@ -290,7 +303,10 @@ async def admin_churn_analysis(update: Update, context: ContextTypes.DEFAULT_TYP
         kb.append([InlineKeyboardButton(f"📢 تذكير {name}", callback_data=f"churn_remind_{uid}"),
                    InlineKeyboardButton(f"🎁 هدية {name}", callback_data=f"churn_gift_{uid}")])
     kb.append([InlineKeyboardButton("🔙 رجوع", callback_data="admin_back")])
+    
     await q.message.reply_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(kb))
+    await q.message.delete()  # حذف الرسالة الأصلية لتجنب الازدحام
+
 
 async def churn_remind(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
