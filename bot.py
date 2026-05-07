@@ -49,7 +49,7 @@ CHEAT_LOG_COLLECTION = "cheat_logs"
 AUTO_WITHDRAWAL_ENABLED = True
 USDT_ADDRESS_REGEX = r'^T[a-zA-Z0-9]{33}$'  # عنوان TRC20 بسيط
 WITHDRAW_PHONE = 101   # قيمة جديدة بعيدة عن الأرقام المستخدمة الأخرى
-FORCE_SUBSCRIBE_CHANNEL = "@easy_free_1"  # أو معرف القناة بالرقمي
+FORCE_SUBSCRIBE_CHANNEL = "@bots_free1"  # أو معرف القناة بالرقمي
 FORCE_SUBSCRIBE_CHANNEL_ID = -1001234567890  # الرقم الحقيقي للقناة
 
 LEVELS = {
