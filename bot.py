@@ -570,6 +570,10 @@ async def account_menu(update, context):
             f"💰 التحويل: {POINTS_PER_DOLLAR} نقطة = $1\n"
             f"🏧 حد السحب: {MIN_WITHDRAW_POINTS} نقطة (${MIN_WITHDRAW_POINTS//POINTS_PER_DOLLAR})\n\n"
             f"🔄 تحويل النقاط العادية إلى قابلة للسحب:\n  • نسبة التحويل: {CONVERSION_RATE}% (100 نقطة عادية → {CONVERSION_RATE} نقطة قابلة للسحب)\n  • الحد اليومي: {MAX_DAILY_CONVERSION} نقطة عادية")
+
+
+      hours, minutes = get_reset_time_remaining()
+    time_left_text = f"⏳ *يتجدد حدك اليومي بعد:* {hours} ساعة و {minutes} دقيقة"
     
     kb = [[InlineKeyboardButton("🔄 تحويل نقاطي", callback_data="convert_points"), InlineKeyboardButton("💰 سحب النقاط", callback_data="withdraw")],
           [InlineKeyboardButton("🔙 رجوع", callback_data="main_back")]]
@@ -1438,11 +1442,12 @@ async def watch_ad(update, context):
         update_user(uid, {"ad_watch_today": 0, "last_ad_date": today})
         u["ad_watch_today"] = 0
   # جلب الحد حسب مستوى المستخدم
-    user_level = u.get("level", "مبتدئ")
-    max_ads_user = LEVELS.get(user_level, {}).get("unlock_ads", 5)
-    if u.get("ad_watch_today", 0) >= max_ads_user:
-        await q.message.reply_text(f"❌ لقد استنفذت حدك اليومي ({max_ads_user} إعلان). مستواك: {user_level}", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏠 القائمة", callback_data="main_back")]]))
-        return
+           hours, minutes = get_reset_time_remaining()
+        await q.message.reply_text(
+            f"❌ لقد استنفذت حدك اليومي ({max_ads_user} إعلان).\n"
+            f"⏳ سيتجدد حدك بعد {hours} ساعة و {minutes} دقيقة.",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏠 القائمة", callback_data="main_back")]])
+        )
   
     level_multiplier = LEVELS.get(u.get("level", "مبتدئ"), LEVELS["مبتدئ"])["multiplier"]
     mul = update_ad_streak(uid, today)
@@ -1519,6 +1524,19 @@ async def withdraw_request(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="Markdown",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
+
+
+
+
+
+def get_reset_time_remaining():
+    """حساب الوقت المتبقي حتى منتصف الليلة القادمة (UTC)"""
+    now = datetime.utcnow()
+    midnight = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+    remaining = midnight - now
+    hours = remaining.seconds // 3600
+    minutes = (remaining.seconds % 3600) // 60
+    return hours, minutes
 
 
 
@@ -2280,6 +2298,7 @@ def main():
     app.add_handler(CommandHandler("end_challenge", end_global_challenge))
     app.add_handler(CommandHandler("cheatlogs", cheat_logs))
     app.add_handler(CommandHandler("setwallet", set_wallet))
+    app.add_handler(CommandHandler("timer", timer_command))
 
     callbacks = [
         ("^content_menu$", content_menu), ("^earn_menu$", earn_menu), ("^account_menu$", account_menu),
