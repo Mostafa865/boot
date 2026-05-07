@@ -356,7 +356,8 @@ async def wheel_of_fortune(update: Update, context: ContextTypes.DEFAULT_TYPE):
         update_user(uid, {"wheel_spins_today": 0, "last_wheel_date": today})
         user_data["wheel_spins_today"] = 0
     spins_today = user_data.get("wheel_spins_today", 0)
-       if spins_today >= WHEEL_DAILY_LIMIT:
+
+    if spins_today >= WHEEL_DAILY_LIMIT:
         hours, minutes = get_reset_time_remaining()
         await query.message.reply_text(
             f"⚠️ لقد استخدمت عجلة الحظ اليوم {WHEEL_DAILY_LIMIT} مرات!\n"
@@ -364,12 +365,24 @@ async def wheel_of_fortune(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 رجوع", callback_data="earn_menu")]])
         )
         return
+
     update_user(uid, {"pending_action": {"type": "wheel"}})
     web_app_button = KeyboardButton("🎡 شاهد الإعلان واستدير (موبايل)", web_app=WebAppInfo(url=WHEEL_URL))
     reply_markup = ReplyKeyboardMarkup(keyboard=[[web_app_button]], resize_keyboard=True, one_time_keyboard=True)
-    await query.message.reply_text(f"🎡 *عجلة الحظ* (المتبقي اليوم: {WHEEL_DAILY_LIMIT - spins_today})\n\n📱 *موبايل:* اضغط الزر أسفل الشاشة\n💻 *لاب:* اضغط الزر أدناه 👇", parse_mode="Markdown", reply_markup=reply_markup)
-    await query.message.reply_text("💻 *للاب فقط:*", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🎡 شاهد الإعلان واستدير (لاب)", web_app=WebAppInfo(url=WHEEL_URL))]]))
-
+    await query.message.reply_text(
+        f"🎡 *عجلة الحظ* (المتبقي اليوم: {WHEEL_DAILY_LIMIT - spins_today})\n\n"
+        f"📱 *موبايل:* اضغط الزر أسفل الشاشة\n"
+        f"💻 *لاب:* اضغط الزر أدناه 👇",
+        parse_mode="Markdown",
+        reply_markup=reply_markup
+    )
+    await query.message.reply_text(
+        "💻 *للاب فقط:*",
+        parse_mode="Markdown",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("🎡 شاهد الإعلان واستدير (لاب)", web_app=WebAppInfo(url=WHEEL_URL))]
+        ])
+    )
 # ========== نظام الكوبونات ==========
 async def create_coupon(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
