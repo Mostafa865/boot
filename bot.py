@@ -1444,8 +1444,8 @@ async def watch_ad(update, context):
         update_user(uid, {"ad_watch_today": 0, "last_ad_date": today})
         u["ad_watch_today"] = 0
   # جلب الحد حسب مستوى المستخدم
-           hours, minutes = get_reset_time_remaining()
-        await q.message.reply_text(
+    hours, minutes = get_reset_time_remaining()
+    await q.message.reply_text(
             f"❌ لقد استنفذت حدك اليومي ({max_ads_user} إعلان).\n"
             f"⏳ سيتجدد حدك بعد {hours} ساعة و {minutes} دقيقة.",
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏠 القائمة", callback_data="main_back")]])
