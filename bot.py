@@ -2340,6 +2340,40 @@ async def timer_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 
+
+async def daily_tasks(update, context):
+    q = update.callback_query
+    await q.answer()
+    u = check_daily_tasks(get_user(q.from_user.id))
+    if u.get("banned", False):
+        await q.answer("⛔ أنت محظور", show_alert=True)
+        return
+    tasks = u["tasks"]
+    text = f"📋 *مهام اليوم*\n{'✅' if tasks['ad'] else '❌'} شاهد إعلان\n{'✅' if tasks['used'] else '❌'} استخدم البوت"
+    
+    # حساب الوقت المتبقي لتجديد المهام اليومية (اختياري)
+    from datetime import datetime, timedelta
+    now = datetime.utcnow()
+    midnight = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+    remaining = midnight - now
+    hours = remaining.seconds // 3600
+    minutes = (remaining.seconds % 3600) // 60
+
+    if tasks["ad"] and tasks["used"] and not tasks["bonus"]:
+        text += "\n\n🎁 *300 نقطة بونص* (يتطلب إعلاناً)"
+        kb = [[InlineKeyboardButton("🎁 استلام البونص", callback_data="claim_bonus")]]
+    elif tasks["bonus"]:
+        text += f"\n✅ استلمت البونص اليوم!\n🔄 يتجدد بعد {hours} ساعة و {minutes} دقيقة."
+        kb = [[InlineKeyboardButton("🏠 القائمة", callback_data="main_back")]]
+    else:
+        text += f"\n🎯 أكمل المهام لتحصل على 300 نقطة!\n🔄 الوقت المتبقي لتجديد المهام: {hours} ساعة و {minutes} دقيقة."
+        kb = [[InlineKeyboardButton("🏠 القائمة", callback_data="main_back")]]
+    
+    await q.message.reply_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(kb))
+
+
+
+
 # ========== تشغيل البوت ==========
 def main():
     app = Application.builder().token(TELEGRAM_TOKEN).build()
