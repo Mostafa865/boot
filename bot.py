@@ -1439,26 +1439,47 @@ async def watch_ad(update, context):
     if u.get("banned", False):
         await q.answer("⛔ أنت محظور", show_alert=True)
         return
+    
     today = datetime.utcnow().strftime("%Y-%m-%d")
     if u.get("last_ad_date") != today:
         update_user(uid, {"ad_watch_today": 0, "last_ad_date": today})
         u["ad_watch_today"] = 0
-  # جلب الحد حسب مستوى المستخدم
-    hours, minutes = get_reset_time_remaining()
-    await q.message.reply_text(
+    
+    # جلب الحد حسب مستوى المستخدم
+    user_level = u.get("level", "مبتدئ")
+    max_ads_user = LEVELS.get(user_level, {}).get("unlock_ads", 8)
+    
+    # التحقق من الحد اليومي
+    if u.get("ad_watch_today", 0) >= max_ads_user:
+        hours, minutes = get_reset_time_remaining()
+        await q.message.reply_text(
             f"❌ لقد استنفذت حدك اليومي ({max_ads_user} إعلان).\n"
             f"⏳ سيتجدد حدك بعد {hours} ساعة و {minutes} دقيقة.",
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏠 القائمة", callback_data="main_back")]])
         )
-  
+        return
+    
     level_multiplier = LEVELS.get(u.get("level", "مبتدئ"), LEVELS["مبتدئ"])["multiplier"]
     mul = update_ad_streak(uid, today)
     earn = int(POINTS_PER_AD * mul * level_multiplier)
     remaining = max_ads_user - u["ad_watch_today"]
+    
     web_app_button = KeyboardButton("📺 شاهد الإعلان الآن (موبايل)", web_app=WebAppInfo(url=AD_URL))
     reply_markup = ReplyKeyboardMarkup(keyboard=[[web_app_button]], resize_keyboard=True, one_time_keyboard=True)
-    await q.message.reply_text(f"📺 *شاهد الإعلان*\n🔥 مضاعف: {mul}x\n⭐ مستوى: {level_multiplier}x\n💰 ستربح: {earn} نقطة\n📊 تبقى: {remaining} إعلان.\n\n📱 *موبايل:* اضغط الزر أسفل الشاشة\n💻 *لاب:* اضغط الزر أدناه 👇", parse_mode="Markdown", reply_markup=reply_markup)
-    await q.message.reply_text("💻 *للاب فقط:*", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("📺 شاهد الإعلان (لاب)", web_app=WebAppInfo(url=AD_URL))]]))
+    
+    await q.message.reply_text(
+        f"📺 *شاهد الإعلان*\n🔥 مضاعف: {mul}x\n⭐ مستوى: {level_multiplier}x\n💰 ستربح: {earn} نقطة\n📊 تبقى: {remaining} إعلان.\n\n📱 *موبايل:* اضغط الزر أسفل الشاشة\n💻 *لاب:* اضغط الزر أدناه 👇",
+        parse_mode="Markdown",
+        reply_markup=reply_markup
+    )
+    await q.message.reply_text(
+        "💻 *للاب فقط:*",
+        parse_mode="Markdown",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("📺 شاهد الإعلان (لاب)", web_app=WebAppInfo(url=AD_URL))]
+        ])
+    )
+
 
 async def daily_tasks(update, context):
     q = update.callback_query
