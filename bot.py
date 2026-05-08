@@ -1465,18 +1465,19 @@ async def watch_ad(update, context):
         await q.answer("⛔ أنت محظور", show_alert=True)
         return
 
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    today = datetime.utcnow().strftime("%Y-%m-%d")
     if u.get("last_ad_date") != today:
         update_user(uid, {"ad_watch_today": 0, "last_ad_date": today})
         u["ad_watch_today"] = 0
 
+    # الحد اليومي حسب المستوى
     user_level = u.get("level", "مبتدئ")
     max_ads_user = LEVELS.get(user_level, {}).get("unlock_ads", 8)
 
     if u.get("ad_watch_today", 0) >= max_ads_user:
         hours, minutes = get_reset_time_remaining()
         await q.message.reply_text(
-            f"❌ خلصت حد النهاردة ({max_ads_user} إعلان).\n🔄 هيتجدد بعد {hours} ساعة و {minutes} دقيقة.",
+            f"❌ لقد استنفذت حدك اليومي ({max_ads_user} إعلان).\n🔄 يتجدد بعد {hours} ساعة و {minutes} دقيقة.",
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏠 القائمة", callback_data="main_back")]])
         )
         return
@@ -1486,15 +1487,21 @@ async def watch_ad(update, context):
     earn = int(POINTS_PER_AD * mul * level_multiplier)
     remaining = max_ads_user - u["ad_watch_today"]
 
-    web_app_button = KeyboardButton("📺 شاهد الإعلان (موبايل)", web_app=WebAppInfo(url=AD_URL))
-    reply_markup = ReplyKeyboardMarkup(keyboard=[[web_app_button]], resize_keyboard=True, one_time_keyboard=True)
+    # زر للموبايل
+    web_app_button = KeyboardButton("📺 شاهد الإعلان الآن (موبايل)", web_app=WebAppInfo(url=AD_URL))
+    reply_markup = ReplyKeyboardMarkup(
+        keyboard=[[web_app_button]],
+        resize_keyboard=True,
+        one_time_keyboard=True
+    )
 
     await q.message.reply_text(
-        f"📺 *شاهد الإعلان*\n🔥 مضاعف الستريك: {mul}x\n⭐ مضاعف المستوى: {level_multiplier}x\n💰 هتكسب: {earn} نقطة\n📊 متبقي اليوم: {remaining} إعلان.\n\n📱 للموبايل: الزر تحت\n💻 للاب: الزر تحت 👇",
+        f"📺 *شاهد الإعلان*\n🔥 مضاعف الستريك: {mul}x\n⭐ مضاعف المستوى: {level_multiplier}x\n💰 ستربح: {earn} نقطة\n📊 تبقى اليوم: {remaining} إعلان.\n\n📱 *للموبايل:* الزر بالأسفل\n💻 *للاب:* الزر أدناه 👇",
         parse_mode="Markdown",
         reply_markup=reply_markup
     )
 
+    # زر للاب
     await q.message.reply_text(
         "💻 *للاب فقط:*",
         parse_mode="Markdown",
@@ -1502,7 +1509,7 @@ async def watch_ad(update, context):
             [InlineKeyboardButton("📺 شاهد الإعلان (لاب)", web_app=WebAppInfo(url=AD_URL))]
         ])
     )
-
+  
 
 
 async def wheel_of_fortune(update, context):
