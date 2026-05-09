@@ -54,11 +54,11 @@ FORCE_SUBSCRIBE_CHANNEL = "@bots_free1"  # أو معرف القناة بالرق
 FORCE_SUBSCRIBE_CHANNEL_ID = -1001234567890  # الرقم الحقيقي للقناة
 
 LEVELS = {
-    "مبتدئ": {"points": 0, "unlock_ads": 0, "reward": 0, "multiplier": 1.0},
-    "نشيط": {"points": 10000, "unlock_ads": 5, "reward": 2000, "multiplier": 1.05},
-    "محترف": {"points": 50000, "unlock_ads": 10, "reward": 5000, "multiplier": 1.1},
-    "VIP": {"points": 150000, "unlock_ads": 20, "reward": 10000, "multiplier": 1.2},
-    "أسطورة": {"points": 500000, "unlock_ads": 50, "reward": 25000, "multiplier": 1.5}
+    "مبتدئ": {"points": 0, "unlock_ads": 8, "reward": 0, "multiplier": 1.0},
+    "نشيط": {"points": 10000, "unlock_ads": 10, "reward": 2000, "multiplier": 1.05},
+    "محترف": {"points": 50000, "unlock_ads": 15, "reward": 5000, "multiplier": 1.1},
+    "VIP": {"points": 150000, "unlock_ads": 25, "reward": 10000, "multiplier": 1.2},
+    "أسطورة": {"points": 500000, "unlock_ads": 40, "reward": 25000, "multiplier": 1.5}
 }
 LEVELS_LIST = ["مبتدئ", "نشيط", "محترف", "VIP", "أسطورة"]
 
@@ -1208,8 +1208,12 @@ async def handle_web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE
             update_user(uid, {"ad_watch_today": 0, "last_ad_date": today})
             u["ad_watch_today"] = 0
                # جلب الحد اليومي حسب مستوى المستخدم
+               # جلب الحد اليومي حسب مستوى المستخدم (مع ضمان حد أدنى 8)
         user_level = u.get("level", "مبتدئ")
-        max_ads_user = LEVELS.get(user_level, {}).get("unlock_ads", 5)
+        max_ads_user = LEVELS.get(user_level, {}).get("unlock_ads", 8)
+        if max_ads_user < 1:
+            max_ads_user = 8
+
         if u.get("ad_watch_today", 0) >= max_ads_user:
             await update.message.reply_text(f"❌ لقد استنفذت حدك اليومي ({max_ads_user} إعلان). مستواك: {user_level}", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏠 القائمة", callback_data="main_back")]]))
             return
@@ -1471,14 +1475,17 @@ async def watch_ad(update, context):
         update_user(uid, {"ad_watch_today": 0, "last_ad_date": today})
         u["ad_watch_today"] = 0
 
-    # الحد اليومي حسب المستوى
+    # الحد اليومي حسب المستوى (مع ضمان حد أدنى 8)
     user_level = u.get("level", "مبتدئ")
     max_ads_user = LEVELS.get(user_level, {}).get("unlock_ads", 8)
+    if max_ads_user < 1:
+        max_ads_user = 8
 
     if u.get("ad_watch_today", 0) >= max_ads_user:
         hours, minutes = get_reset_time_remaining()
         await q.message.reply_text(
-            f"❌ لقد استنفذت حدك اليومي ({max_ads_user} إعلان).\n🔄 يتجدد بعد {hours} ساعة و {minutes} دقيقة.",
+            f"❌ لقد استنفذت حدك اليومي ({max_ads_user} إعلان).\n"
+            f"🔄 يتجدد بعد {hours} ساعة و {minutes} دقيقة.",
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏠 القائمة", callback_data="main_back")]])
         )
         return
@@ -1488,7 +1495,6 @@ async def watch_ad(update, context):
     earn = int(POINTS_PER_AD * mul * level_multiplier)
     remaining = max_ads_user - u["ad_watch_today"]
 
-    # زر للموبايل
     web_app_button = KeyboardButton("📺 شاهد الإعلان الآن (موبايل)", web_app=WebAppInfo(url=AD_URL))
     reply_markup = ReplyKeyboardMarkup(
         keyboard=[[web_app_button]],
