@@ -35,6 +35,9 @@ EARLY_BIRD_POINTS = 5000
 EARLY_BIRD_LIMIT = 100
 CONVERSION_RATE = 10
 MAX_DAILY_CONVERSION = 5000
+# ========== وضع الصيانة ==========
+MAINTENANCE_MODE = True   # غيّره إلى False عندما ينتهي التطوير
+MAINTENANCE_MESSAGE = "🔧 *البوت قيد التطوير حاليًا!*\n\nنقوم بإضافة ميزات جديدة وتحسين الأداء. سيتم الانتهاء قريبًا.\n📢 تابع قناتنا لمعرفة كل جديد: [@bots_free1](https://t.me/bots_free1)\n\nشكرًا لتفهمك 🙏"
 # ========== إعدادات كشف الغش ==========
 ANTI_CHEAT_ENABLED = True
 MAX_ADS_PER_SECOND = 1   # إعلان واحد كل 10 ثوانٍ (أي 6 في الدقيقة)
@@ -405,6 +408,8 @@ async def create_coupon(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def redeem_coupon(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
+    if await check_maintenance(update, context):
+        return
     await q.message.reply_text("🎟️ *استخدام كود خصم*\nأرسل الكود الآن:", parse_mode="Markdown")
     context.user_data['awaiting_coupon'] = True
 
@@ -466,6 +471,8 @@ async def admin_stop_offer(update, context):
 async def challenge_friend(update, context):
     q = update.callback_query
     await q.answer()
+    if await check_maintenance(update, context):
+        return
     uid = q.from_user.id
     u = get_user(uid)
     if u.get("challenge_active"):
@@ -507,11 +514,10 @@ def main_menu():
     return InlineKeyboardMarkup(kb)
 
 async def content_menu(update, context):
-   
-    if await check_maintenance(update, context):
-        return
     q = update.callback_query
     await q.answer()
+    if await check_maintenance(update, context):
+        return
     if get_user(q.from_user.id).get("banned", False):
         await q.answer("⛔ أنت محظور", show_alert=True)
         return
@@ -524,10 +530,10 @@ async def content_menu(update, context):
     await q.edit_message_text("✍️ *اختر نوع المحتوى:*", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(kb))
 
 async def earn_menu(update, context):
-    if await check_maintenance(update, context):
-        return
     q = update.callback_query
     await q.answer()
+    if await check_maintenance(update, context):
+        return
     if get_user(q.from_user.id).get("banned", False):
         await q.answer("⛔ أنت محظور", show_alert=True)
         return
@@ -539,11 +545,10 @@ async def earn_menu(update, context):
     await q.edit_message_text("💰 *كسب النقاط*\nاختر طريقة:", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(kb))
 
 async def account_menu(update, context):
-    
-    if await check_maintenance(update, context):
-        return
     q = update.callback_query
     await q.answer()
+    if await check_maintenance(update, context):
+        return
     uid = q.from_user.id
     u = get_user(uid)
     if u.get("banned", False):
@@ -627,6 +632,8 @@ async def main_back(update, context):
 async def special_offers(update, context):
     q = update.callback_query
     await q.answer()
+    if await check_maintenance(update, context):
+        return
     u = get_user(q.from_user.id)
     flash = get_active_flash_offer()
     text = "🎁 *العروض الخاصة*\n\n"
@@ -643,6 +650,8 @@ async def special_offers(update, context):
 async def referral_share(update, context):
     q = update.callback_query
     await q.answer()
+    if await check_maintenance(update, context):
+        return
     uid = q.from_user.id
     if get_user(uid).get("banned", False):
         await q.answer("⛔ أنت محظور", show_alert=True)
@@ -724,6 +733,8 @@ async def end_global_challenge(update: Update, context: ContextTypes.DEFAULT_TYP
 async def global_challenge_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
+    if await check_maintenance(update, context):
+        return
     uid = q.from_user.id
     user = get_user(uid)
     if user.get("banned", False):
@@ -992,6 +1003,8 @@ async def cheat_logs(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def convert_points(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
+    if await check_maintenance(update, context):
+        return
     uid = query.from_user.id
     user_data = get_user(uid)
     if user_data.get("banned", False):
@@ -1049,7 +1062,8 @@ async def start(update, context):
     user = update.effective_user
     uid = user.id
     name = user.first_name
-    
+    if await check_maintenance(update, context):
+        return
     # معالجة الإحالات
     if context.args and context.args[0].startswith("ref_"):
         ref_id = context.args[0].replace("ref_", "")
@@ -1193,6 +1207,8 @@ async def get_weekly_topic(update, context):
 
 # ========== دوال الإعلانات والمكافآت ==========
 async def handle_web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if await check_maintenance(update, context):
+        return
     print("🔥 WebApp data received!")
     data = update.message.web_app_data.data
     print(f"Data: {data}")
@@ -1431,6 +1447,8 @@ async def handle_web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE
 async def mystery_box(update, context):
     q = update.callback_query
     await q.answer()
+    if await check_maintenance(update, context):
+        return
     u = get_user(q.from_user.id)
     if u.get("banned", False):
         await q.answer("⛔ أنت محظور", show_alert=True)
@@ -1472,6 +1490,9 @@ async def mystery_box(update, context):
 async def watch_ad(update, context):
     q = update.callback_query
     await q.answer()
+
+    if await check_maintenance(update, context):
+        return
     uid = q.from_user.id
     u = get_user(uid)
     if u.get("banned", False):
@@ -1530,6 +1551,8 @@ async def watch_ad(update, context):
 async def wheel_of_fortune(update, context):
     query = update.callback_query
     await query.answer()
+    if await check_maintenance(update, context):
+        return
     uid = query.from_user.id
     user_data = get_user(uid)
     if user_data.get("banned", False):
@@ -1582,6 +1605,8 @@ async def claim_bonus(update, context):
 async def withdraw_request(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
+    if await check_maintenance(update, context):
+        return
     uid = q.from_user.id
     u = get_user(uid)
     if u.get("banned", False):
@@ -2359,6 +2384,8 @@ async def timer_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def daily_tasks(update, context):
     q = update.callback_query
     await q.answer()
+    if await check_maintenance(update, context):
+        return
     u = check_daily_tasks(get_user(q.from_user.id))
     if u.get("banned", False):
         await q.answer("⛔ أنت محظور", show_alert=True)
@@ -2388,15 +2415,15 @@ async def daily_tasks(update, context):
 
 
 async def check_maintenance(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # يمكنك تفعيل الصيانة عن طريق متغير في قاعدة البيانات أو متغير عام
-    if MAINTENANCE_MODE:  # عرّف هذا المتغير في البداية (False/True)
-        await update.callback_query.message.reply_text(
-            "🔧 البوت قيد التطوير حاليًا. تابع قناتنا للمستجدات:\n"
-            f"👉 {FORCE_SUBSCRIBE_CHANNEL}",
-            parse_mode="Markdown"
-        )
-            return False  # يعني في وضع الصيانة
-
+    """إذا كان وضع الصيانة مفعلاً، يرسل رسالة للمستخدمين العاديين ويعيد True"""
+    if MAINTENANCE_MODE and update.effective_user.id != ADMIN_ID:
+        if update.callback_query:
+            await update.callback_query.answer()
+            await update.callback_query.message.reply_text(MAINTENANCE_MESSAGE, parse_mode="Markdown")
+        else:
+            await update.message.reply_text(MAINTENANCE_MESSAGE, parse_mode="Markdown")
+        return True
+    return False
 
 # ========== تشغيل البوت ==========
 def main():
