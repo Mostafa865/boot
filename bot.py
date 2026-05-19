@@ -1062,7 +1062,12 @@ async def start(update, context):
     user = update.effective_user
     uid = user.id
     name = user.first_name
-    if await check_maintenance(update, context):
+   # وضع الصيانة (غيّر إلى True لتفعيل)
+    MAINTENANCE_MODE = True   # <--- غيرها إلى True
+    MAINTENANCE_MSG = "🔧 البوت تحت الصيانة حالياً. تابع قناتنا @bots_free1 للمستجدات."
+
+    if MAINTENANCE_MODE and uid != ADMIN_ID:
+        await update.message.reply_text(MAINTENANCE_MSG)
         return
     # معالجة الإحالات
     if context.args and context.args[0].startswith("ref_"):
