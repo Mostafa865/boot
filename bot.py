@@ -507,6 +507,9 @@ def main_menu():
     return InlineKeyboardMarkup(kb)
 
 async def content_menu(update, context):
+   
+    if await check_maintenance(update, context):
+        return
     q = update.callback_query
     await q.answer()
     if get_user(q.from_user.id).get("banned", False):
@@ -521,6 +524,8 @@ async def content_menu(update, context):
     await q.edit_message_text("✍️ *اختر نوع المحتوى:*", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(kb))
 
 async def earn_menu(update, context):
+    if await check_maintenance(update, context):
+        return
     q = update.callback_query
     await q.answer()
     if get_user(q.from_user.id).get("banned", False):
@@ -534,6 +539,9 @@ async def earn_menu(update, context):
     await q.edit_message_text("💰 *كسب النقاط*\nاختر طريقة:", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(kb))
 
 async def account_menu(update, context):
+    
+    if await check_maintenance(update, context):
+        return
     q = update.callback_query
     await q.answer()
     uid = q.from_user.id
@@ -2379,6 +2387,16 @@ async def daily_tasks(update, context):
     await q.message.reply_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(kb))
 
 
+async def check_maintenance(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # يمكنك تفعيل الصيانة عن طريق متغير في قاعدة البيانات أو متغير عام
+    if MAINTENANCE_MODE:  # عرّف هذا المتغير في البداية (False/True)
+        await update.callback_query.message.reply_text(
+            "🔧 البوت قيد التطوير حاليًا. تابع قناتنا للمستجدات:\n"
+            f"👉 {FORCE_SUBSCRIBE_CHANNEL}",
+            parse_mode="Markdown"
+        )
+        return True  # يعني في وضع الصيانة
+    return False
 
 
 # ========== تشغيل البوت ==========
