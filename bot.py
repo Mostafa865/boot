@@ -2395,8 +2395,7 @@ async def check_maintenance(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"👉 {FORCE_SUBSCRIBE_CHANNEL}",
             parse_mode="Markdown"
         )
-        return True  # يعني في وضع الصيانة
-    return False
+            return True  # يعني في وضع الصيانة
 
 
 # ========== تشغيل البوت ==========
