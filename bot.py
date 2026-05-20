@@ -36,7 +36,7 @@ EARLY_BIRD_LIMIT = 100
 CONVERSION_RATE = 10
 MAX_DAILY_CONVERSION = 5000
 # ========== وضع الصيانة ==========
-MAINTENANCE_MODE = False   # غيّره إلى False عندما ينتهي التطوير
+MAINTENANCE_MODE = True   # غيّره إلى False عندما ينتهي التطوير
 MAINTENANCE_MESSAGE = "🔧 *البوت قيد التطوير حاليًا!*\n\nنقوم بإضافة ميزات جديدة وتحسين الأداء. سيتم الانتهاء قريبًا.\n📢 تابع قناتنا لمعرفة كل جديد: [@bots_free1](https://t.me/bots_free1)\n\nشكرًا لتفهمك 🙏"
 # ========== إعدادات كشف الغش ==========
 ANTI_CHEAT_ENABLED = True
